@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 // Daily Activity Planner — single-file React component
 // Features:
@@ -30,6 +30,41 @@ const fmtDuration = (mins) => {
   return `${m}m`;
 };
 
+// ---------- Theme Context ----------
+const ThemeContext = createContext();
+
+const useTheme = () => {
+  const context = useContext(ThemeContext);
+  if (!context) throw new Error('useTheme must be used within ThemeProvider');
+  return context;
+};
+
+const ThemeProvider = ({ children }) => {
+  const [isDark, setIsDark] = useState(() => {
+    try {
+      const saved = localStorage.getItem('planner.theme');
+      return saved ? JSON.parse(saved) : true; // Default to dark mode
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('planner.theme', JSON.stringify(isDark));
+      document.documentElement.classList.toggle('dark', isDark);
+    } catch {}
+  }, [isDark]);
+
+  const toggleTheme = () => setIsDark(prev => !prev);
+
+  return (
+    <ThemeContext.Provider value={{ isDark, toggleTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+};
+
 // ---------- Default categories & colors ----------
 const CATEGORY_COLORS = {
   Sleep: "#94a3b8", // slate-400
@@ -49,7 +84,7 @@ const DEFAULTS = [
 ];
 
 // ---------- Main Component ----------
-export default function DayPlannerApp() {
+function DayPlannerApp() {
   const [activities, setActivities] = useState(() => {
     try {
       const raw = localStorage.getItem("planner.activities");
@@ -164,58 +199,61 @@ export default function DayPlannerApp() {
 
   // ---------- UI ----------
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 p-4 sm:p-6">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-4 sm:p-6">
       <div className="max-w-6xl mx-auto grid gap-6 lg:grid-cols-5">
         {/* Left: Controls & Stats */}
         <section className="lg:col-span-2 space-y-6">
           <header className="flex items-center justify-between">
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Daily Activity Planner</h1>
-            <button
-              onClick={() => {
-                if (confirm("Clear all activities?")) setActivities([]);
-              }}
-              className="text-sm px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300"
-            >
-              Clear All
-            </button>
+            <div className="flex items-center gap-3">
+              <ThemeToggle />
+              <button
+                onClick={() => {
+                  if (confirm("Clear all activities?")) setActivities([]);
+                }}
+                className="text-sm px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-200"
+              >
+                Clear All
+              </button>
+            </div>
           </header>
 
           {/* Countdown Cards */}
           <div className="grid sm:grid-cols-2 gap-3">
             <Card>
-              <div className="text-sm text-slate-500">Time now</div>
+              <div className="text-sm text-slate-500 dark:text-slate-400">Time now</div>
               <div className="text-2xl font-semibold">
                 {pad(now.getHours())}:{pad(now.getMinutes())}:{pad(now.getSeconds())}
               </div>
-              <div className="text-xs text-slate-500">{now.toLocaleDateString()}</div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">{now.toLocaleDateString()}</div>
             </Card>
 
             <Card>
-              <div className="text-sm text-slate-500">Next activity</div>
+              <div className="text-sm text-slate-500 dark:text-slate-400">Next activity</div>
               {nextActivity ? (
                 <div>
                   <div className="font-medium">{nextActivity.title || nextActivity.category} @ {nextActivity.start}</div>
                   <div className="text-2xl font-semibold mt-1">
                     {fmtDuration(minsUntilNext)}
                   </div>
-                  <div className="text-xs text-slate-500">until {nextActivity.category.toLowerCase()}</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">until {nextActivity.category.toLowerCase()}</div>
                 </div>
               ) : (
-                <div className="text-slate-500">None left today</div>
+                <div className="text-slate-500 dark:text-slate-400">None left today</div>
               )}
             </Card>
 
             <Card className="sm:col-span-2">
-              <div className="text-sm text-slate-500">Active (free) time before next Sleep</div>
+              <div className="text-sm text-slate-500 dark:text-slate-400">Active (free) time before next Sleep</div>
               {nextSleep ? (
                 <div className="flex items-end gap-3 flex-wrap">
                   <div className="text-2xl font-semibold">{fmtDuration(freeUntilSleep)}</div>
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
                     until sleep at <span className="font-medium">{nextSleep.start}</span>
                   </div>
                 </div>
               ) : (
-                <div className="text-slate-500">No upcoming Sleep scheduled today</div>
+                <div className="text-slate-500 dark:text-slate-400">No upcoming Sleep scheduled today</div>
               )}
             </Card>
           </div>
@@ -242,12 +280,12 @@ export default function DayPlannerApp() {
             <h2 className="font-semibold mb-2">Today's Activities</h2>
             <ul className="space-y-2">
               {sorted.map((a) => (
-                <li key={a.id} className="flex items-center justify-between bg-white rounded-2xl p-3 shadow-sm">
+                <li key={a.id} className="flex items-center justify-between bg-white dark:bg-slate-800 rounded-2xl p-3 shadow-sm">
                   <div className="flex items-center gap-3">
                     <span className="w-2 h-8 rounded" style={{ background: colorFor(a.category) }} />
                     <div>
                       <div className="font-medium">{a.title || a.category}</div>
-                      <div className="text-xs text-slate-500">{a.start} • {fmtDuration(a.duration)} • {a.category}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">{a.start} • {fmtDuration(a.duration)} • {a.category}</div>
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -267,13 +305,13 @@ export default function DayPlannerApp() {
         {/* Right: Calendar */}
         <section className="lg:col-span-3">
           <h2 className="font-semibold mb-2">Daily Calendar</h2>
-          <div className="relative bg-white rounded-2xl shadow-sm p-4">
+          <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4">
             {/* Timeline */}
             <div className="relative" style={{ height: CAL_HEIGHT_PX }}>
               {/* Hour grid */}
               {hourMarks.map((m, idx) => (
-                <div key={idx} className="absolute left-0 right-0 border-t border-slate-100 flex items-start" style={{ top: (m / DAY_MINUTES) * CAL_HEIGHT_PX }}>
-                  <div className="-mt-3 text-[10px] text-slate-400 select-none w-12">{pad(Math.floor(m/60))}:00</div>
+                <div key={idx} className="absolute left-0 right-0 border-t border-slate-100 dark:border-slate-700 flex items-start" style={{ top: (m / DAY_MINUTES) * CAL_HEIGHT_PX }}>
+                  <div className="-mt-3 text-[10px] text-slate-400 dark:text-slate-500 select-none w-12">{pad(Math.floor(m/60))}:00</div>
                 </div>
               ))}
 
@@ -282,7 +320,7 @@ export default function DayPlannerApp() {
                 className="absolute left-0 right-0 h-0.5 bg-emerald-500/80"
                 style={{ top: nowPos }}
               />
-              <div className="absolute -top-2 text-[10px] text-emerald-700" style={{ top: nowPos - 10 }}>now</div>
+              <div className="absolute -top-2 text-[10px] text-emerald-700 dark:text-emerald-400" style={{ top: nowPos - 10 }}>now</div>
 
               {/* Activity blocks */}
               {sorted.map((a) => {
@@ -310,7 +348,7 @@ export default function DayPlannerApp() {
         </section>
       </div>
 
-      <footer className="max-w-6xl mx-auto mt-8 text-center text-xs text-slate-500">
+      <footer className="max-w-6xl mx-auto mt-8 text-center text-xs text-slate-500 dark:text-slate-400">
         Tip: click a block in the calendar (or an item in the list) to edit it. Data is saved locally in your browser.
       </footer>
     </div>
@@ -322,19 +360,19 @@ function Form({ form, setForm, onSubmit, onCancel }) {
   const categories = Object.keys(CATEGORY_COLORS);
 
   return (
-    <form onSubmit={onSubmit} className="bg-white rounded-2xl shadow-sm p-4 space-y-4">
+    <form onSubmit={onSubmit} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">{form.id ? "Edit Activity" : "Add Activity"}</h2>
         {form.id && (
-          <button type="button" onClick={onCancel} className="text-sm px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200">Cancel</button>
+          <button type="button" onClick={onCancel} className="text-sm px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-200">Cancel</button>
         )}
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3">
         <div className="space-y-1">
-          <label className="text-sm text-slate-600">Title</label>
+          <label className="text-sm text-slate-600 dark:text-slate-300">Title</label>
           <input
-            className="w-full rounded-xl border border-slate-200 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+            className="w-full rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300"
             placeholder="e.g., Deep Work"
             value={form.title}
             onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
@@ -342,9 +380,9 @@ function Form({ form, setForm, onSubmit, onCancel }) {
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm text-slate-600">Category</label>
+          <label className="text-sm text-slate-600 dark:text-slate-300">Category</label>
           <select
-            className="w-full rounded-xl border border-slate-200 p-2 bg-white"
+            className="w-full rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2 bg-white"
             value={form.category}
             onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
           >
@@ -355,22 +393,22 @@ function Form({ form, setForm, onSubmit, onCancel }) {
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm text-slate-600">Start Time</label>
+          <label className="text-sm text-slate-600 dark:text-slate-300">Start Time</label>
           <input
             type="time"
-            className="w-full rounded-xl border border-slate-200 p-2"
+            className="w-full rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2"
             value={form.start}
             onChange={(e) => setForm((f) => ({ ...f, start: e.target.value }))}
           />
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm text-slate-600">Duration (minutes)</label>
+          <label className="text-sm text-slate-600 dark:text-slate-300">Duration (minutes)</label>
           <input
             type="number"
             min={5}
             step={5}
-            className="w-full rounded-xl border border-slate-200 p-2"
+            className="w-full rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2"
             value={form.duration}
             onChange={(e) => setForm((f) => ({ ...f, duration: Number(e.target.value) }))}
           />
@@ -381,7 +419,7 @@ function Form({ form, setForm, onSubmit, onCancel }) {
         <button type="submit" className="px-4 py-2 rounded-xl bg-emerald-500 text-white font-medium hover:bg-emerald-600">
           {form.id ? "Update" : "Add"}
         </button>
-        <span className="text-xs text-slate-400">Click an activity block to edit</span>
+        <span className="text-xs text-slate-400 dark:text-slate-500">Click an activity block to edit</span>
       </div>
     </form>
   );
@@ -390,7 +428,7 @@ function Form({ form, setForm, onSubmit, onCancel }) {
 // ---------- Card & Buttons ----------
 function Card({ children, className = "" }) {
   return (
-    <div className={`bg-white rounded-2xl shadow-sm p-4 ${className}`}>
+    <div className={`bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4 ${className}`}>
       {children}
     </div>
   );
@@ -401,9 +439,31 @@ function IconButton({ children, onClick, label }) {
     <button
       onClick={onClick}
       aria-label={label}
-      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200"
+      className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600"
     >
       <span className="text-base leading-none">{children}</span>
+    </button>
+  );
+}
+
+function ThemeToggle() {
+  const { isDark, toggleTheme } = useTheme();
+  
+  return (
+    <button
+      onClick={toggleTheme}
+      className="p-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 transition-colors"
+      aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+    >
+      {isDark ? (
+        <svg className="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
+        </svg>
+      ) : (
+        <svg className="w-5 h-5 text-slate-700 dark:text-slate-300" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
+        </svg>
+      )}
     </button>
   );
 }
@@ -430,4 +490,13 @@ function validate(form, all) {
   if (overlaps.length) errs.push(`Warning: overlaps with ${overlaps.length} existing activit${overlaps.length === 1 ? "y" : "ies"}`);
 
   return errs;
+}
+
+// ---------- App with Theme Provider ----------
+export default function App() {
+  return (
+    <ThemeProvider>
+      <DayPlannerApp />
+    </ThemeProvider>
+  );
 }
