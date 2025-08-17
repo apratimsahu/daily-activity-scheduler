@@ -440,26 +440,39 @@ function DayPlannerApp() {
   const hourMarks = useMemo(() => {
     const marks = [];
     
-    // Start from sleep end and create marks for each awake hour
-    for (let i = 0; i < Math.ceil(AWAKE_MINUTES / 60); i++) {
+    // Calculate how many full hours we have in the awake period
+    const awakeHours = Math.floor(AWAKE_MINUTES / 60);
+    
+    // Add hour marks for each full hour from wake up
+    for (let i = 0; i <= awakeHours; i++) {
       const minutesFromWakeUp = i * 60;
-      if (minutesFromWakeUp >= AWAKE_MINUTES) break;
-      
       const actualTimeMinutes = (sleepEnd + minutesFromWakeUp) % (24 * 60);
       const hour = Math.floor(actualTimeMinutes / 60);
-      const displayPosition = timeToDisplayPosition(actualTimeMinutes);
+      const displayPosition = (minutesFromWakeUp / AWAKE_MINUTES) * CAL_HEIGHT_PX;
       
-      if (displayPosition >= 0) { // Only add if it's a valid position
-        marks.push({
-          minutes: actualTimeMinutes,
-          displayPosition: displayPosition,
-          hour: hour
-        });
-      }
+      marks.push({
+        minutes: actualTimeMinutes,
+        displayPosition: displayPosition,
+        hour: hour
+      });
+    }
+    
+    // Always add the sleep start time as the final mark at the bottom
+    // This ensures we show the exact moment when sleep begins
+    const sleepStartHour = Math.floor(sleepStart / 60);
+    const lastMark = marks[marks.length - 1];
+    
+    // Only add if it's different from the last hour mark
+    if (!lastMark || lastMark.hour !== sleepStartHour) {
+      marks.push({
+        minutes: sleepStart,
+        displayPosition: CAL_HEIGHT_PX - 1, // Position just before the very bottom to ensure visibility
+        hour: sleepStartHour
+      });
     }
     
     return marks;
-  }, [sleepStart, sleepEnd, sleepConfig.duration, AWAKE_MINUTES]);
+  }, [sleepStart, sleepEnd, sleepConfig.duration, AWAKE_MINUTES, CAL_HEIGHT_PX]);
 
 
   // ---------- UI ----------
