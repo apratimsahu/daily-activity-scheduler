@@ -389,6 +389,66 @@ function DayPlannerApp() {
   );
 }
 
+// ---------- TimeSelector Component ----------
+function TimeSelector({ value, onChange }) {
+  // Convert 24h format to 12h components
+  const [hours24, minutes] = value.split(':').map(Number);
+  const period = hours24 >= 12 ? 'PM' : 'AM';
+  const hours12 = hours24 === 0 ? 12 : hours24 > 12 ? hours24 - 12 : hours24;
+  
+  // Generate options
+  const hourOptions = Array.from({ length: 12 }, (_, i) => i + 1);
+  const minuteOptions = Array.from({ length: 12 }, (_, i) => i * 5); // 0, 5, 10, ..., 55
+  const periodOptions = ['AM', 'PM'];
+  
+  const handleChange = (newHours12, newMinutes, newPeriod) => {
+    // Convert back to 24h format
+    let hours24 = newHours12;
+    if (newPeriod === 'AM' && newHours12 === 12) hours24 = 0;
+    else if (newPeriod === 'PM' && newHours12 !== 12) hours24 = newHours12 + 12;
+    
+    const timeStr = `${pad(hours24)}:${pad(newMinutes)}`;
+    onChange(timeStr);
+  };
+  
+  return (
+    <div className="flex gap-2">
+      {/* Hours */}
+      <select
+        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2 bg-white"
+        value={hours12}
+        onChange={(e) => handleChange(Number(e.target.value), minutes, period)}
+      >
+        {hourOptions.map(h => (
+          <option key={h} value={h}>{h}</option>
+        ))}
+      </select>
+      
+      {/* Minutes */}
+      <select
+        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2 bg-white"
+        value={minutes}
+        onChange={(e) => handleChange(hours12, Number(e.target.value), period)}
+      >
+        {minuteOptions.map(m => (
+          <option key={m} value={m}>{pad(m)}</option>
+        ))}
+      </select>
+      
+      {/* AM/PM */}
+      <select
+        className="flex-1 rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2 bg-white"
+        value={period}
+        onChange={(e) => handleChange(hours12, minutes, e.target.value)}
+      >
+        {periodOptions.map(p => (
+          <option key={p} value={p}>{p}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 // ---------- Form Component ----------
 function Form({ form, setForm, onSubmit, onCancel }) {
   const categories = Object.keys(CATEGORY_COLORS);
@@ -428,17 +488,10 @@ function Form({ form, setForm, onSubmit, onCancel }) {
 
         <div className="space-y-1">
           <label className="text-sm text-slate-600 dark:text-slate-300">Start Time</label>
-          <input
-            type="time"
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2"
+          <TimeSelector
             value={form.start}
-            onChange={(e) => setForm((f) => ({ ...f, start: e.target.value }))}
+            onChange={(time) => setForm((f) => ({ ...f, start: time }))}
           />
-          {form.start && (
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              {to12Hour(form.start)}
-            </div>
-          )}
         </div>
 
         <div className="space-y-1">
