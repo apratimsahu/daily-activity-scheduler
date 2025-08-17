@@ -146,7 +146,9 @@ function DayPlannerApp() {
     dragOffset: { x: 0, y: 0 },
     startY: 0,
     shadowPosition: null, // { top: number, startTime: string }
-    currentMouseY: 0
+    currentMouseY: 0,
+    hasMoved: false, // Track if mouse has moved during drag
+    justFinishedDrag: false // Prevent click after drag
   });
 
   // Persist
@@ -234,6 +236,33 @@ function DayPlannerApp() {
   const onEdit = (a) => setForm({ ...a });
   const onDelete = (id) => setActivities((prev) => prev.filter((a) => a.id !== id));
 
+  // Handle calendar click to add quick activity
+  const onCalendarClick = (e) => {
+    // Don't create activity if we just finished dragging or clicked on an existing activity
+    if (dragState.justFinishedDrag || e.target.closest('button')) return;
+    
+    const calendarRect = e.currentTarget.getBoundingClientRect();
+    const clickY = e.clientY - calendarRect.top;
+    const clickTimeMinutes = Math.round((clickY / CAL_HEIGHT_PX) * DAY_MINUTES);
+    
+    // Snap to 15-minute intervals
+    const snappedMinutes = Math.round(clickTimeMinutes / 15) * 15;
+    const clampedMinutes = Math.max(0, Math.min(23 * 60 + 30, snappedMinutes)); // Max 11:30 PM to allow 30 min activity
+    
+    const clickTime = toHHMM(clampedMinutes);
+    
+    // Create new 30-second activity (0.5 minutes)
+    const newActivity = {
+      id: crypto.randomUUID?.() || String(Date.now()),
+      title: "Quick Task",
+      category: "Other",
+      start: clickTime,
+      duration: 0.5 // 30 seconds
+    };
+    
+    setActivities(prev => [...prev, newActivity]);
+  };
+
   // Drag and drop handlers
   const onDragStart = (e, activity) => {
     e.stopPropagation();
@@ -260,6 +289,12 @@ function DayPlannerApp() {
 
   const onDragMove = (e) => {
     if (!dragState.isDragging) return;
+    
+    // Mark as moved if mouse has moved more than a few pixels
+    const moveDistance = Math.abs(e.clientY - dragState.startY);
+    if (moveDistance > 5 && !dragState.hasMoved) {
+      setDragState(prev => ({ ...prev, hasMoved: true }));
+    }
     
     // Calculate shadow position accounting for where user clicked within the activity
     const calendarRect = e.currentTarget.getBoundingClientRect();
@@ -292,34 +327,47 @@ function DayPlannerApp() {
   const onDragEnd = (e) => {
     if (!dragState.isDragging) return;
     
-    // Calculate new time based on drop position, accounting for drag offset
-    const calendarRect = e.currentTarget.closest('.calendar-timeline').getBoundingClientRect();
-    const mouseRelativeToCalendar = e.clientY - calendarRect.top;
-    const activityTopRelativeToCalendar = mouseRelativeToCalendar - dragState.dragOffset.y;
-    const newTimeMinutes = Math.round((activityTopRelativeToCalendar / CAL_HEIGHT_PX) * DAY_MINUTES);
+    // Only update position if we actually dragged (moved more than threshold)
+    if (dragState.hasMoved) {
+      // Calculate new time based on drop position, accounting for drag offset
+      const calendarRect = e.currentTarget.closest('.calendar-timeline').getBoundingClientRect();
+      const mouseRelativeToCalendar = e.clientY - calendarRect.top;
+      const activityTopRelativeToCalendar = mouseRelativeToCalendar - dragState.dragOffset.y;
+      const newTimeMinutes = Math.round((activityTopRelativeToCalendar / CAL_HEIGHT_PX) * DAY_MINUTES);
+      
+      // Snap to 15-minute intervals
+      const snappedMinutes = Math.round(newTimeMinutes / 15) * 15;
+      const clampedMinutes = Math.max(0, Math.min(23 * 60 + 45, snappedMinutes)); // Max 11:45 PM
+      
+      const newStartTime = toHHMM(clampedMinutes);
+      
+      // Update the activity
+      setActivities(prev => prev.map(a => 
+        a.id === dragState.draggedActivity.id 
+          ? { ...a, start: newStartTime }
+          : a
+      ));
+    } else {
+      // If we didn't move, treat it as a click to edit
+      onEdit(dragState.draggedActivity);
+    }
     
-    // Snap to 15-minute intervals
-    const snappedMinutes = Math.round(newTimeMinutes / 15) * 15;
-    const clampedMinutes = Math.max(0, Math.min(23 * 60 + 45, snappedMinutes)); // Max 11:45 PM
-    
-    const newStartTime = toHHMM(clampedMinutes);
-    
-    // Update the activity
-    setActivities(prev => prev.map(a => 
-      a.id === dragState.draggedActivity.id 
-        ? { ...a, start: newStartTime }
-        : a
-    ));
-    
-    // Reset drag state
+    // Reset drag state and set flag to prevent immediate click
     setDragState({
       isDragging: false,
       draggedActivity: null,
       dragOffset: { x: 0, y: 0 },
       startY: 0,
       shadowPosition: null,
-      currentMouseY: 0
+      currentMouseY: 0,
+      hasMoved: false,
+      justFinishedDrag: true
     });
+
+    // Clear the flag after a short delay
+    setTimeout(() => {
+      setDragState(prev => ({ ...prev, justFinishedDrag: false }));
+    }, 50);
   };
 
   // ---------- Rendering helpers ----------
@@ -440,11 +488,12 @@ function DayPlannerApp() {
           <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4">
             {/* Timeline */}
             <div 
-              className="relative calendar-timeline" 
+              className="relative calendar-timeline cursor-pointer" 
               style={{ height: CAL_HEIGHT_PX }}
               onMouseMove={onDragMove}
               onMouseUp={onDragEnd}
               onMouseLeave={onDragEnd}
+              onClick={onCalendarClick}
             >
               {/* Hour grid */}
               {hourMarks.map((m, idx) => (
@@ -484,7 +533,7 @@ function DayPlannerApp() {
                   >
                     <button
                       onClick={(e) => {
-                        if (!dragState.isDragging) onEdit(a);
+                        e.stopPropagation(); // Prevent calendar click
                       }}
                       onMouseDown={(e) => onDragStart(e, a)}
                       className="w-full h-full text-left cursor-move"
