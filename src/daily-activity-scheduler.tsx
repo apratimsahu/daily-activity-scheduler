@@ -18,6 +18,40 @@ const toMinutes = (hhmm) => {
 const toHHMM = (mins) => `${pad(Math.floor(mins / 60))}:${pad(mins % 60)}`;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
+// Convert 24h format to 12h format with AM/PM
+const to12Hour = (timeStr) => {
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const hour12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  return `${hour12}:${pad(minutes)} ${period}`;
+};
+
+// Convert minutes since midnight to 12h format
+const minsTo12Hour = (mins) => {
+  const hours = Math.floor(mins / 60);
+  const minutes = mins % 60;
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const hour12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  return `${hour12}:${pad(minutes)} ${period}`;
+};
+
+// Format current time in 12h format with seconds
+const formatCurrentTime = (date) => {
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+  const seconds = date.getSeconds();
+  const period = hours >= 12 ? 'PM' : 'AM';
+  const hour12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+  return `${hour12}:${pad(minutes)}:${pad(seconds)} ${period}`;
+};
+
+// Format hour for calendar markers (12h format)
+const formatHourMarker = (hour) => {
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  return `${hour12}${period}`;
+};
+
 // Overlap (in minutes) between [a1,a2) and [b1,b2)
 const overlapMins = (a1, a2, b1, b2) => Math.max(0, Math.min(a2, b2) - Math.max(a1, b1));
 
@@ -223,7 +257,7 @@ function DayPlannerApp() {
             <Card>
               <div className="text-sm text-slate-500 dark:text-slate-400">Time now</div>
               <div className="text-2xl font-semibold">
-                {pad(now.getHours())}:{pad(now.getMinutes())}:{pad(now.getSeconds())}
+                {formatCurrentTime(now)}
               </div>
               <div className="text-xs text-slate-500 dark:text-slate-400">{now.toLocaleDateString()}</div>
             </Card>
@@ -232,7 +266,7 @@ function DayPlannerApp() {
               <div className="text-sm text-slate-500 dark:text-slate-400">Next activity</div>
               {nextActivity ? (
                 <div>
-                  <div className="font-medium">{nextActivity.title || nextActivity.category} @ {nextActivity.start}</div>
+                  <div className="font-medium">{nextActivity.title || nextActivity.category} @ {to12Hour(nextActivity.start)}</div>
                   <div className="text-2xl font-semibold mt-1">
                     {fmtDuration(minsUntilNext)}
                   </div>
@@ -249,7 +283,7 @@ function DayPlannerApp() {
                 <div className="flex items-end gap-3 flex-wrap">
                   <div className="text-2xl font-semibold">{fmtDuration(freeUntilSleep)}</div>
                   <div className="text-xs text-slate-500 dark:text-slate-400">
-                    until sleep at <span className="font-medium">{nextSleep.start}</span>
+                    until sleep at <span className="font-medium">{to12Hour(nextSleep.start)}</span>
                   </div>
                 </div>
               ) : (
@@ -285,7 +319,7 @@ function DayPlannerApp() {
                     <span className="w-2 h-8 rounded" style={{ background: colorFor(a.category) }} />
                     <div>
                       <div className="font-medium">{a.title || a.category}</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">{a.start} • {fmtDuration(a.duration)} • {a.category}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">{to12Hour(a.start)} • {fmtDuration(a.duration)} • {a.category}</div>
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -311,7 +345,7 @@ function DayPlannerApp() {
               {/* Hour grid */}
               {hourMarks.map((m, idx) => (
                 <div key={idx} className="absolute left-0 right-0 border-t border-slate-100 dark:border-slate-700 flex items-start" style={{ top: (m / DAY_MINUTES) * CAL_HEIGHT_PX }}>
-                  <div className="-mt-3 text-[10px] text-slate-400 dark:text-slate-500 select-none w-12">{pad(Math.floor(m/60))}:00</div>
+                  <div className="-mt-3 text-[10px] text-slate-400 dark:text-slate-500 select-none w-12">{formatHourMarker(Math.floor(m/60))}</div>
                 </div>
               ))}
 
@@ -334,11 +368,11 @@ function DayPlannerApp() {
                     onClick={() => onEdit(a)}
                     className="absolute left-14 right-3 text-left rounded-xl shadow-sm ring-1 ring-black/5 hover:shadow-md transition-shadow"
                     style={{ top, height, background: colorFor(a.category) }}
-                    title={`${a.title || a.category} • ${a.start}–${toHHMM(endM)} • ${fmtDuration(a.duration)}`}
+                    title={`${a.title || a.category} • ${to12Hour(a.start)}–${minsTo12Hour(endM)} • ${fmtDuration(a.duration)}`}
                   >
                     <div className="px-3 py-2 text-white/95 text-sm">
                       <div className="font-semibold truncate">{a.title || a.category}</div>
-                      <div className="text-xs opacity-80">{a.start}–{toHHMM(endM)} • {a.category}</div>
+                      <div className="text-xs opacity-80">{to12Hour(a.start)}–{minsTo12Hour(endM)} • {a.category}</div>
                     </div>
                   </button>
                 );
@@ -400,6 +434,11 @@ function Form({ form, setForm, onSubmit, onCancel }) {
             value={form.start}
             onChange={(e) => setForm((f) => ({ ...f, start: e.target.value }))}
           />
+          {form.start && (
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              {to12Hour(form.start)}
+            </div>
+          )}
         </div>
 
         <div className="space-y-1">
