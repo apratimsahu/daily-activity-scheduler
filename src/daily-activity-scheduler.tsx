@@ -240,12 +240,20 @@ function DayPlannerApp() {
     const rect = e.currentTarget.getBoundingClientRect();
     const startY = e.clientY - rect.top;
     
+    // Initialize shadow position to the original activity position
+    const originalStartTime = activity.start;
+    const originalStartMinutes = toMinutes(originalStartTime);
+    const originalTop = (originalStartMinutes / DAY_MINUTES) * CAL_HEIGHT_PX;
+    
     setDragState({
       isDragging: true,
       draggedActivity: activity,
       dragOffset: { x: e.clientX - rect.left, y: startY },
       startY: e.clientY,
-      shadowPosition: null,
+      shadowPosition: {
+        top: originalTop,
+        startTime: originalStartTime
+      },
       currentMouseY: e.clientY
     });
   };
@@ -253,10 +261,14 @@ function DayPlannerApp() {
   const onDragMove = (e) => {
     if (!dragState.isDragging) return;
     
-    // Calculate shadow position based on current mouse position
+    // Calculate shadow position accounting for where user clicked within the activity
     const calendarRect = e.currentTarget.getBoundingClientRect();
-    const relativeY = e.clientY - calendarRect.top;
-    const newTimeMinutes = Math.round((relativeY / CAL_HEIGHT_PX) * DAY_MINUTES);
+    const mouseRelativeToCalendar = e.clientY - calendarRect.top;
+    
+    // Subtract the drag offset to get the activity's top position
+    const activityTopRelativeToCalendar = mouseRelativeToCalendar - dragState.dragOffset.y;
+    
+    const newTimeMinutes = Math.round((activityTopRelativeToCalendar / CAL_HEIGHT_PX) * DAY_MINUTES);
     
     // Snap to 15-minute intervals
     const snappedMinutes = Math.round(newTimeMinutes / 15) * 15;
@@ -280,10 +292,11 @@ function DayPlannerApp() {
   const onDragEnd = (e) => {
     if (!dragState.isDragging) return;
     
-    // Calculate new time based on drop position
+    // Calculate new time based on drop position, accounting for drag offset
     const calendarRect = e.currentTarget.closest('.calendar-timeline').getBoundingClientRect();
-    const relativeY = e.clientY - calendarRect.top;
-    const newTimeMinutes = Math.round((relativeY / CAL_HEIGHT_PX) * DAY_MINUTES);
+    const mouseRelativeToCalendar = e.clientY - calendarRect.top;
+    const activityTopRelativeToCalendar = mouseRelativeToCalendar - dragState.dragOffset.y;
+    const newTimeMinutes = Math.round((activityTopRelativeToCalendar / CAL_HEIGHT_PX) * DAY_MINUTES);
     
     // Snap to 15-minute intervals
     const snappedMinutes = Math.round(newTimeMinutes / 15) * 15;
