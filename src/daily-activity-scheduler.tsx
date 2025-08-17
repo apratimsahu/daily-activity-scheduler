@@ -147,8 +147,8 @@ function DayPlannerApp() {
     startY: 0,
     shadowPosition: null, // { top: number, startTime: string }
     currentMouseY: 0,
-    hasMoved: false, // Track if mouse has moved during drag
-    justFinishedDrag: false // Prevent click after drag
+    justFinishedDrag: false, // Prevent click after drag
+    hasMoved: false // Track if we've moved enough to consider it a drag
   });
 
   // Persist
@@ -247,17 +247,17 @@ function DayPlannerApp() {
     
     // Snap to 15-minute intervals
     const snappedMinutes = Math.round(clickTimeMinutes / 15) * 15;
-    const clampedMinutes = Math.max(0, Math.min(23 * 60 + 30, snappedMinutes)); // Max 11:30 PM to allow 30 min activity
+    const clampedMinutes = Math.max(0, Math.min(23 * 60 + 45, snappedMinutes)); // Max 11:45 PM to allow 15 min activity
     
     const clickTime = toHHMM(clampedMinutes);
     
-    // Create new 30-second activity (0.5 minutes)
+    // Create new 15-minute activity
     const newActivity = {
       id: crypto.randomUUID?.() || String(Date.now()),
       title: "Quick Task",
       category: "Other",
       start: clickTime,
-      duration: 0.5 // 30 seconds
+      duration: 15 // 15 minutes
     };
     
     setActivities(prev => [...prev, newActivity]);
@@ -290,56 +290,49 @@ function DayPlannerApp() {
   const onDragMove = (e) => {
     if (!dragState.isDragging) return;
     
-    // Mark as moved if mouse has moved more than a few pixels
+    // Check if we've moved enough to consider it a drag (3px threshold)
     const moveDistance = Math.abs(e.clientY - dragState.startY);
-    if (moveDistance > 5 && !dragState.hasMoved) {
+    if (moveDistance > 3) {
       setDragState(prev => ({ ...prev, hasMoved: true }));
     }
     
-    // Calculate shadow position accounting for where user clicked within the activity
-    const calendarRect = e.currentTarget.getBoundingClientRect();
-    const mouseRelativeToCalendar = e.clientY - calendarRect.top;
-    
-    // Subtract the drag offset to get the activity's top position
-    const activityTopRelativeToCalendar = mouseRelativeToCalendar - dragState.dragOffset.y;
-    
-    const newTimeMinutes = Math.round((activityTopRelativeToCalendar / CAL_HEIGHT_PX) * DAY_MINUTES);
-    
-    // Snap to 15-minute intervals
-    const snappedMinutes = Math.round(newTimeMinutes / 15) * 15;
-    const clampedMinutes = Math.max(0, Math.min(23 * 60 + 45, snappedMinutes));
-    
-    const shadowTop = (clampedMinutes / DAY_MINUTES) * CAL_HEIGHT_PX;
-    const shadowStartTime = toHHMM(clampedMinutes);
-    
-    // Update drag position and shadow
-    setDragState(prev => ({
-      ...prev,
-      startY: e.clientY,
-      currentMouseY: e.clientY,
-      shadowPosition: {
-        top: shadowTop,
-        startTime: shadowStartTime
-      }
-    }));
+    // Only show shadow and allow repositioning if we've moved enough
+    if (moveDistance > 3) {
+      // Calculate shadow position accounting for where user clicked within the activity
+      const calendarRect = e.currentTarget.getBoundingClientRect();
+      const mouseRelativeToCalendar = e.clientY - calendarRect.top;
+      
+      // Subtract the drag offset to get the activity's top position
+      const activityTopRelativeToCalendar = mouseRelativeToCalendar - dragState.dragOffset.y;
+      
+      const newTimeMinutes = Math.round((activityTopRelativeToCalendar / CAL_HEIGHT_PX) * DAY_MINUTES);
+      
+      // Snap to 15-minute intervals
+      const snappedMinutes = Math.round(newTimeMinutes / 15) * 15;
+      const clampedMinutes = Math.max(0, Math.min(23 * 60 + 45, snappedMinutes));
+      
+      const shadowTop = (clampedMinutes / DAY_MINUTES) * CAL_HEIGHT_PX;
+      const shadowStartTime = toHHMM(clampedMinutes);
+      
+      // Update drag position and shadow
+      setDragState(prev => ({
+        ...prev,
+        currentMouseY: e.clientY,
+        shadowPosition: {
+          top: shadowTop,
+          startTime: shadowStartTime
+        }
+      }));
+    }
   };
 
   const onDragEnd = (e) => {
     if (!dragState.isDragging) return;
     
-    // Only update position if we actually dragged (moved more than threshold)
-    if (dragState.hasMoved) {
-      // Calculate new time based on drop position, accounting for drag offset
-      const calendarRect = e.currentTarget.closest('.calendar-timeline').getBoundingClientRect();
-      const mouseRelativeToCalendar = e.clientY - calendarRect.top;
-      const activityTopRelativeToCalendar = mouseRelativeToCalendar - dragState.dragOffset.y;
-      const newTimeMinutes = Math.round((activityTopRelativeToCalendar / CAL_HEIGHT_PX) * DAY_MINUTES);
-      
-      // Snap to 15-minute intervals
-      const snappedMinutes = Math.round(newTimeMinutes / 15) * 15;
-      const clampedMinutes = Math.max(0, Math.min(23 * 60 + 45, snappedMinutes)); // Max 11:45 PM
-      
-      const newStartTime = toHHMM(clampedMinutes);
+    // Check if we moved enough to consider it a drag
+    if (dragState.hasMoved && dragState.shadowPosition) {
+      // Use the shadow position for the final placement
+      const newStartTime = dragState.shadowPosition.startTime;
       
       // Update the activity
       setActivities(prev => prev.map(a => 
@@ -348,7 +341,7 @@ function DayPlannerApp() {
           : a
       ));
     } else {
-      // If we didn't move, treat it as a click to edit
+      // If we didn't move enough, treat it as a click to edit
       onEdit(dragState.draggedActivity);
     }
     
@@ -360,8 +353,8 @@ function DayPlannerApp() {
       startY: 0,
       shadowPosition: null,
       currentMouseY: 0,
-      hasMoved: false,
-      justFinishedDrag: true
+      justFinishedDrag: true,
+      hasMoved: false
     });
 
     // Clear the flag after a short delay
