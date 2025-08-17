@@ -234,62 +234,52 @@ function DayPlannerApp() {
   const sleepStart = toMinutes(sleepConfig.start);
   const sleepEnd = (sleepStart + sleepConfig.duration) % DAY_MINUTES;
 
-  // Convert absolute time to display position (skipping sleep)
+  // Convert absolute time to display position (calendar starts from sleep end time)
   const timeToDisplayPosition = (timeMinutes) => {
     // Normalize time to 0-1439 range
     const normalizedTime = ((timeMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
     
-    let awakeMinutesFromStart = 0;
+    // Calculate minutes from sleep end (start of awake period)
+    let minutesFromWakeUp = 0;
     
     if (sleepStart < sleepEnd) {
       // Sleep doesn't cross midnight (e.g., 02:00 to 08:00)
       if (normalizedTime >= sleepStart && normalizedTime < sleepEnd) {
-        // Time is during sleep - position at sleep boundary
-        return normalizedTime < (sleepStart + sleepEnd) / 2 
-          ? (sleepStart / AWAKE_MINUTES) * CAL_HEIGHT_PX
-          : ((sleepStart) / AWAKE_MINUTES) * CAL_HEIGHT_PX;
+        // Time is during sleep - not shown on calendar
+        return -1; // Indicate this time shouldn't be displayed
       } else if (normalizedTime >= sleepEnd) {
-        // Time is after sleep
-        awakeMinutesFromStart = normalizedTime - sleepConfig.duration;
+        // Time is after sleep (same day)
+        minutesFromWakeUp = normalizedTime - sleepEnd;
       } else {
-        // Time is before sleep
-        awakeMinutesFromStart = normalizedTime;
+        // Time is before sleep (next day's schedule)
+        minutesFromWakeUp = (normalizedTime + (24 * 60) - sleepEnd);
       }
     } else {
       // Sleep crosses midnight (e.g., 23:00 to 08:00)
       if (normalizedTime >= sleepStart || normalizedTime < sleepEnd) {
-        // Time is during sleep - position at sleep boundary
-        return normalizedTime >= sleepStart 
-          ? ((sleepStart) / AWAKE_MINUTES) * CAL_HEIGHT_PX
-          : (0); // Start of day after sleep
+        // Time is during sleep - not shown on calendar
+        return -1; // Indicate this time shouldn't be displayed
       } else {
         // Time is in awake period (between sleepEnd and sleepStart)
-        awakeMinutesFromStart = normalizedTime - sleepEnd;
+        minutesFromWakeUp = normalizedTime - sleepEnd;
       }
     }
     
-    return (awakeMinutesFromStart / AWAKE_MINUTES) * CAL_HEIGHT_PX;
+    // Clamp to awake period
+    minutesFromWakeUp = Math.max(0, Math.min(AWAKE_MINUTES, minutesFromWakeUp));
+    
+    return (minutesFromWakeUp / AWAKE_MINUTES) * CAL_HEIGHT_PX;
   };
 
-  // Convert display position back to absolute time
+  // Convert display position back to absolute time (from sleep end time)
   const displayPositionToTime = (position) => {
     const awakeRatio = Math.max(0, Math.min(1, position / CAL_HEIGHT_PX));
-    const awakeMinutesFromStart = awakeRatio * AWAKE_MINUTES;
+    const minutesFromWakeUp = awakeRatio * AWAKE_MINUTES;
     
-    if (sleepStart < sleepEnd) {
-      // Sleep doesn't cross midnight (e.g., 02:00 to 08:00)
-      if (awakeMinutesFromStart <= sleepStart) {
-        // Before sleep period
-        return awakeMinutesFromStart;
-      } else {
-        // After sleep period
-        return awakeMinutesFromStart + sleepConfig.duration;
-      }
-    } else {
-      // Sleep crosses midnight (e.g., 23:00 to 08:00)
-      // Awake period is from sleepEnd to sleepStart
-      return (sleepEnd + awakeMinutesFromStart) % (24 * 60);
-    }
+    // Calculate actual time by adding minutes from wake up to sleep end time
+    const actualTime = (sleepEnd + minutesFromWakeUp) % (24 * 60);
+    
+    return actualTime;
   };
 
   // ---------- Handlers ----------
@@ -446,33 +436,31 @@ function DayPlannerApp() {
   // ---------- Rendering helpers ----------
   const colorFor = (category) => CATEGORY_COLORS[category] || CATEGORY_COLORS.Other;
 
-  // Generate hour marks excluding sleep time
+  // Generate hour marks starting from sleep end time
   const hourMarks = useMemo(() => {
     const marks = [];
-    for (let hour = 0; hour < 24; hour++) {
-      const hourMinutes = hour * 60;
-      let isInSleep = false;
+    
+    // Start from sleep end and create marks for each awake hour
+    for (let i = 0; i < Math.ceil(AWAKE_MINUTES / 60); i++) {
+      const minutesFromWakeUp = i * 60;
+      if (minutesFromWakeUp >= AWAKE_MINUTES) break;
       
-      if (sleepStart < sleepEnd) {
-        // Sleep doesn't cross midnight
-        isInSleep = hourMinutes >= sleepStart && hourMinutes < sleepEnd;
-      } else {
-        // Sleep crosses midnight
-        isInSleep = hourMinutes >= sleepStart || hourMinutes < sleepEnd;
-      }
+      const actualTimeMinutes = (sleepEnd + minutesFromWakeUp) % (24 * 60);
+      const hour = Math.floor(actualTimeMinutes / 60);
+      const displayPosition = timeToDisplayPosition(actualTimeMinutes);
       
-      if (!isInSleep) {
+      if (displayPosition >= 0) { // Only add if it's a valid position
         marks.push({
-          minutes: hourMinutes,
-          displayPosition: timeToDisplayPosition(hourMinutes),
+          minutes: actualTimeMinutes,
+          displayPosition: displayPosition,
           hour: hour
         });
       }
     }
+    
     return marks;
-  }, [sleepStart, sleepEnd, sleepConfig.duration]);
+  }, [sleepStart, sleepEnd, sleepConfig.duration, AWAKE_MINUTES]);
 
-  const nowPos = timeToDisplayPosition(nowMin);
 
   // ---------- UI ----------
   return (
@@ -607,18 +595,15 @@ function DayPlannerApp() {
 
               {/* Now indicator - only show if not during sleep */}
               {(() => {
-                const isNowInSleep = (sleepStart < sleepEnd) 
-                  ? (nowMin >= sleepStart && nowMin < sleepEnd)
-                  : (nowMin >= sleepStart || nowMin < sleepEnd);
-                
-                if (!isNowInSleep) {
+                const nowPosition = timeToDisplayPosition(nowMin);
+                if (nowPosition >= 0) {
                   return (
                     <>
                       <div
                         className="absolute left-0 right-0 h-0.5 bg-emerald-500/80"
-                        style={{ top: nowPos }}
+                        style={{ top: nowPosition }}
                       />
-                      <div className="absolute -top-2 text-[10px] text-emerald-700 dark:text-emerald-400" style={{ top: nowPos - 10 }}>now</div>
+                      <div className="absolute -top-2 text-[10px] text-emerald-700 dark:text-emerald-400" style={{ top: nowPosition - 10 }}>now</div>
                     </>
                   );
                 }
@@ -628,6 +613,7 @@ function DayPlannerApp() {
               {/* Activity blocks */}
               {sorted
                 .filter(a => a.category !== 'Sleep') // Don't show sleep activities in calendar
+                .filter(a => timeToDisplayPosition(toMinutes(a.start)) >= 0) // Only show activities during awake time
                 .map((a) => {
                   const startM = toMinutes(a.start);
                   const endM = startM + a.duration;
