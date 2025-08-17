@@ -136,6 +136,16 @@ function DayPlannerApp() {
     duration: 60,
   });
 
+  // Sleep configuration state
+  const [sleepConfig, setSleepConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem('planner.sleepConfig');
+      return saved ? JSON.parse(saved) : { start: "23:00", duration: 540 }; // Default: 11 PM, 9 hours
+    } catch {
+      return { start: "23:00", duration: 540 };
+    }
+  });
+
   const [now, setNow] = useState(() => new Date());
   const nowTick = useRef(null);
 
@@ -157,6 +167,13 @@ function DayPlannerApp() {
       localStorage.setItem("planner.activities", JSON.stringify(activities));
     } catch {}
   }, [activities]);
+
+  // Persist sleep configuration
+  useEffect(() => {
+    try {
+      localStorage.setItem("planner.sleepConfig", JSON.stringify(sleepConfig));
+    } catch {}
+  }, [sleepConfig]);
 
   // Realtime clock
   useEffect(() => {
@@ -210,7 +227,70 @@ function DayPlannerApp() {
 
   // Calendar dimensions
   const DAY_MINUTES = 24 * 60;
-  const CAL_HEIGHT_PX = 24 * 40; // 40px per hour
+  const AWAKE_MINUTES = DAY_MINUTES - sleepConfig.duration;
+  const CAL_HEIGHT_PX = AWAKE_MINUTES * (40 / 60); // Scale to awake time only
+
+  // Utility functions for sleep-aware positioning
+  const sleepStart = toMinutes(sleepConfig.start);
+  const sleepEnd = (sleepStart + sleepConfig.duration) % DAY_MINUTES;
+
+  // Convert absolute time to display position (skipping sleep)
+  const timeToDisplayPosition = (timeMinutes) => {
+    // Normalize time to 0-1439 range
+    const normalizedTime = ((timeMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+    
+    let awakeMinutesFromStart = 0;
+    
+    if (sleepStart < sleepEnd) {
+      // Sleep doesn't cross midnight (e.g., 02:00 to 08:00)
+      if (normalizedTime >= sleepStart && normalizedTime < sleepEnd) {
+        // Time is during sleep - position at sleep boundary
+        return normalizedTime < (sleepStart + sleepEnd) / 2 
+          ? (sleepStart / AWAKE_MINUTES) * CAL_HEIGHT_PX
+          : ((sleepStart) / AWAKE_MINUTES) * CAL_HEIGHT_PX;
+      } else if (normalizedTime >= sleepEnd) {
+        // Time is after sleep
+        awakeMinutesFromStart = normalizedTime - sleepConfig.duration;
+      } else {
+        // Time is before sleep
+        awakeMinutesFromStart = normalizedTime;
+      }
+    } else {
+      // Sleep crosses midnight (e.g., 23:00 to 08:00)
+      if (normalizedTime >= sleepStart || normalizedTime < sleepEnd) {
+        // Time is during sleep - position at sleep boundary
+        return normalizedTime >= sleepStart 
+          ? ((sleepStart) / AWAKE_MINUTES) * CAL_HEIGHT_PX
+          : (0); // Start of day after sleep
+      } else {
+        // Time is in awake period (between sleepEnd and sleepStart)
+        awakeMinutesFromStart = normalizedTime - sleepEnd;
+      }
+    }
+    
+    return (awakeMinutesFromStart / AWAKE_MINUTES) * CAL_HEIGHT_PX;
+  };
+
+  // Convert display position back to absolute time
+  const displayPositionToTime = (position) => {
+    const awakeRatio = Math.max(0, Math.min(1, position / CAL_HEIGHT_PX));
+    const awakeMinutesFromStart = awakeRatio * AWAKE_MINUTES;
+    
+    if (sleepStart < sleepEnd) {
+      // Sleep doesn't cross midnight (e.g., 02:00 to 08:00)
+      if (awakeMinutesFromStart <= sleepStart) {
+        // Before sleep period
+        return awakeMinutesFromStart;
+      } else {
+        // After sleep period
+        return awakeMinutesFromStart + sleepConfig.duration;
+      }
+    } else {
+      // Sleep crosses midnight (e.g., 23:00 to 08:00)
+      // Awake period is from sleepEnd to sleepStart
+      return (sleepEnd + awakeMinutesFromStart) % (24 * 60);
+    }
+  };
 
   // ---------- Handlers ----------
   const resetForm = () => setForm({ id: null, title: "", category: "Work", start: "09:00", duration: 60 });
@@ -243,7 +323,7 @@ function DayPlannerApp() {
     
     const calendarRect = e.currentTarget.getBoundingClientRect();
     const clickY = e.clientY - calendarRect.top;
-    const clickTimeMinutes = Math.round((clickY / CAL_HEIGHT_PX) * DAY_MINUTES);
+    const clickTimeMinutes = displayPositionToTime(clickY);
     
     // Snap to 15-minute intervals
     const snappedMinutes = Math.round(clickTimeMinutes / 15) * 15;
@@ -272,7 +352,7 @@ function DayPlannerApp() {
     // Initialize shadow position to the original activity position
     const originalStartTime = activity.start;
     const originalStartMinutes = toMinutes(originalStartTime);
-    const originalTop = (originalStartMinutes / DAY_MINUTES) * CAL_HEIGHT_PX;
+    const originalTop = timeToDisplayPosition(originalStartMinutes);
     
     setDragState({
       isDragging: true,
@@ -305,13 +385,13 @@ function DayPlannerApp() {
       // Subtract the drag offset to get the activity's top position
       const activityTopRelativeToCalendar = mouseRelativeToCalendar - dragState.dragOffset.y;
       
-      const newTimeMinutes = Math.round((activityTopRelativeToCalendar / CAL_HEIGHT_PX) * DAY_MINUTES);
+      const newTimeMinutes = displayPositionToTime(activityTopRelativeToCalendar);
       
       // Snap to 15-minute intervals
       const snappedMinutes = Math.round(newTimeMinutes / 15) * 15;
       const clampedMinutes = Math.max(0, Math.min(23 * 60 + 45, snappedMinutes));
       
-      const shadowTop = (clampedMinutes / DAY_MINUTES) * CAL_HEIGHT_PX;
+      const shadowTop = timeToDisplayPosition(clampedMinutes);
       const shadowStartTime = toHHMM(clampedMinutes);
       
       // Update drag position and shadow
@@ -366,9 +446,33 @@ function DayPlannerApp() {
   // ---------- Rendering helpers ----------
   const colorFor = (category) => CATEGORY_COLORS[category] || CATEGORY_COLORS.Other;
 
-  const hourMarks = Array.from({ length: 25 }, (_, i) => i * 60);
+  // Generate hour marks excluding sleep time
+  const hourMarks = useMemo(() => {
+    const marks = [];
+    for (let hour = 0; hour < 24; hour++) {
+      const hourMinutes = hour * 60;
+      let isInSleep = false;
+      
+      if (sleepStart < sleepEnd) {
+        // Sleep doesn't cross midnight
+        isInSleep = hourMinutes >= sleepStart && hourMinutes < sleepEnd;
+      } else {
+        // Sleep crosses midnight
+        isInSleep = hourMinutes >= sleepStart || hourMinutes < sleepEnd;
+      }
+      
+      if (!isInSleep) {
+        marks.push({
+          minutes: hourMinutes,
+          displayPosition: timeToDisplayPosition(hourMinutes),
+          hour: hour
+        });
+      }
+    }
+    return marks;
+  }, [sleepStart, sleepEnd, sleepConfig.duration]);
 
-  const nowPos = (nowMin / DAY_MINUTES) * CAL_HEIGHT_PX;
+  const nowPos = timeToDisplayPosition(nowMin);
 
   // ---------- UI ----------
   return (
@@ -439,6 +543,12 @@ function DayPlannerApp() {
             onCancel={resetForm}
           />
 
+          {/* Sleep Configuration */}
+          <SleepConfig
+            sleepConfig={sleepConfig}
+            setSleepConfig={setSleepConfig}
+          />
+
           {/* Legend */}
           <div className="flex flex-wrap items-center gap-3">
             {Object.entries(CATEGORY_COLORS).map(([k, v]) => (
@@ -489,26 +599,41 @@ function DayPlannerApp() {
               onClick={onCalendarClick}
             >
               {/* Hour grid */}
-              {hourMarks.map((m, idx) => (
-                <div key={idx} className="absolute left-0 right-0 border-t border-slate-100 dark:border-slate-700 flex items-start" style={{ top: (m / DAY_MINUTES) * CAL_HEIGHT_PX }}>
-                  <div className="-mt-3 text-[10px] text-slate-400 dark:text-slate-500 select-none w-12">{formatHourMarker(Math.floor(m/60))}</div>
+              {hourMarks.map((mark, idx) => (
+                <div key={idx} className="absolute left-0 right-0 border-t border-slate-100 dark:border-slate-700 flex items-start" style={{ top: mark.displayPosition }}>
+                  <div className="-mt-3 text-[10px] text-slate-400 dark:text-slate-500 select-none w-12">{formatHourMarker(mark.hour)}</div>
                 </div>
               ))}
 
-              {/* Now indicator */}
-              <div
-                className="absolute left-0 right-0 h-0.5 bg-emerald-500/80"
-                style={{ top: nowPos }}
-              />
-              <div className="absolute -top-2 text-[10px] text-emerald-700 dark:text-emerald-400" style={{ top: nowPos - 10 }}>now</div>
+              {/* Now indicator - only show if not during sleep */}
+              {(() => {
+                const isNowInSleep = (sleepStart < sleepEnd) 
+                  ? (nowMin >= sleepStart && nowMin < sleepEnd)
+                  : (nowMin >= sleepStart || nowMin < sleepEnd);
+                
+                if (!isNowInSleep) {
+                  return (
+                    <>
+                      <div
+                        className="absolute left-0 right-0 h-0.5 bg-emerald-500/80"
+                        style={{ top: nowPos }}
+                      />
+                      <div className="absolute -top-2 text-[10px] text-emerald-700 dark:text-emerald-400" style={{ top: nowPos - 10 }}>now</div>
+                    </>
+                  );
+                }
+                return null;
+              })()}
 
               {/* Activity blocks */}
-              {sorted.map((a) => {
-                const startM = toMinutes(a.start);
-                const endM = startM + a.duration;
-                const top = (startM / DAY_MINUTES) * CAL_HEIGHT_PX;
-                const height = Math.max(18, (a.duration / DAY_MINUTES) * CAL_HEIGHT_PX);
-                const isDragging = dragState.isDragging && dragState.draggedActivity?.id === a.id;
+              {sorted
+                .filter(a => a.category !== 'Sleep') // Don't show sleep activities in calendar
+                .map((a) => {
+                  const startM = toMinutes(a.start);
+                  const endM = startM + a.duration;
+                  const top = timeToDisplayPosition(startM);
+                  const height = Math.max(18, (a.duration / AWAKE_MINUTES) * CAL_HEIGHT_PX);
+                  const isDragging = dragState.isDragging && dragState.draggedActivity?.id === a.id;
                 
                 return (
                   <div
@@ -558,7 +683,7 @@ function DayPlannerApp() {
                   className="absolute left-14 right-3 rounded-xl border-2 border-dashed border-slate-400 bg-slate-200/50 dark:bg-slate-600/50 z-40"
                   style={{
                     top: dragState.shadowPosition.top,
-                    height: Math.max(18, (dragState.draggedActivity.duration / DAY_MINUTES) * CAL_HEIGHT_PX),
+                    height: Math.max(18, (dragState.draggedActivity.duration / AWAKE_MINUTES) * CAL_HEIGHT_PX),
                     pointerEvents: 'none'
                   }}
                 >
@@ -639,6 +764,43 @@ function TimeSelector({ value, onChange }) {
           <option key={p} value={p}>{p}</option>
         ))}
       </select>
+    </div>
+  );
+}
+
+// ---------- Sleep Configuration Component ----------
+function SleepConfig({ sleepConfig, setSleepConfig }) {
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4 space-y-4">
+      <h2 className="font-semibold">Sleep Configuration</h2>
+      
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="text-sm text-slate-600 dark:text-slate-300">Sleep Start Time</label>
+          <TimeSelector
+            value={sleepConfig.start}
+            onChange={(time) => setSleepConfig(prev => ({ ...prev, start: time }))}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-sm text-slate-600 dark:text-slate-300">Sleep Duration (hours)</label>
+          <select
+            className="w-full rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2 bg-white"
+            value={sleepConfig.duration / 60}
+            onChange={(e) => setSleepConfig(prev => ({ ...prev, duration: Number(e.target.value) * 60 }))}
+          >
+            {Array.from({ length: 9 }, (_, i) => i + 4).map(hours => (
+              <option key={hours} value={hours}>{hours} hours</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="text-xs text-slate-500 dark:text-slate-400">
+        Sleep period: {to12Hour(sleepConfig.start)} - {minsTo12Hour((toMinutes(sleepConfig.start) + sleepConfig.duration) % (24 * 60))} 
+        ({fmtDuration(sleepConfig.duration)})
+      </div>
     </div>
   );
 }
