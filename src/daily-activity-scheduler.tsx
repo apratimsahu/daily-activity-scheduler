@@ -205,21 +205,54 @@ function DayPlannerApp() {
     return clamp(toMinutes(nextActivity.start) - nowMin, 0, 24 * 60);
   }, [nextActivity, nowMin]);
 
-  // Free/active time until next Sleep
-  const nextSleep = useMemo(() => sorted.find((a) => a.category === "Sleep" && toMinutes(a.start) >= nowMin) || null, [sorted, nowMin]);
+  // Free/active time until next Sleep (using sleep configuration)
+  const nextSleep = useMemo(() => {
+    const sleepStartMinutes = toMinutes(sleepConfig.start);
+    
+    // Find the next occurrence of sleep time
+    let nextSleepTime;
+    if (nowMin <= sleepStartMinutes) {
+      // Sleep is later today
+      nextSleepTime = sleepStartMinutes;
+    } else {
+      // Sleep is tomorrow (add 24 hours)
+      nextSleepTime = sleepStartMinutes + (24 * 60);
+    }
+    
+    return {
+      start: sleepConfig.start,
+      startMinutes: nextSleepTime,
+      duration: sleepConfig.duration
+    };
+  }, [sleepConfig, nowMin]);
 
   const freeUntilSleep = useMemo(() => {
     if (!nextSleep) return null;
-    const sleepStart = toMinutes(nextSleep.start);
     const horizonA = nowMin;
-    const horizonB = sleepStart;
+    const horizonB = nextSleep.startMinutes;
+    
     // Sum busy minutes from activities overlapping [now, sleep)
     let busy = 0;
     for (const a of sorted) {
       const aStart = toMinutes(a.start);
       const aEnd = aStart + a.duration;
-      busy += overlapMins(horizonA, horizonB, aStart, aEnd);
+      
+      // Handle activities that might span across midnight
+      let adjustedStart = aStart;
+      let adjustedEnd = aEnd;
+      
+      // If we're looking at tomorrow's sleep, we need to consider today's activities
+      if (horizonB > 24 * 60) {
+        // For activities that happen "tomorrow" in the context of late-night schedule
+        if (aStart < nowMin) {
+          adjustedStart = aStart + (24 * 60);
+          adjustedEnd = aEnd + (24 * 60);
+        }
+      }
+      
+      busy += overlapMins(horizonA, horizonB, adjustedStart, adjustedEnd);
     }
+    
     const span = Math.max(0, horizonB - horizonA);
     const free = clamp(span - busy, 0, span);
     return free;
