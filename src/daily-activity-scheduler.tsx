@@ -112,7 +112,7 @@ const CATEGORY_COLORS = {
 };
 
 const DEFAULTS = [
-  { title: "Sleep", category: "Sleep", start: "23:00", duration: 480 }, // 8h
+  { title: "Sleep", category: "Sleep", start: "23:00", duration: 540 }, // 9h (11pm-8am)
   { title: "Work", category: "Work", start: "09:30", duration: 480 },
   { title: "Gym", category: "Gym", start: "18:00", duration: 60 },
 ];
@@ -138,6 +138,14 @@ function DayPlannerApp() {
 
   const [now, setNow] = useState(() => new Date());
   const nowTick = useRef(null);
+
+  // Drag and drop state
+  const [dragState, setDragState] = useState({
+    isDragging: false,
+    draggedActivity: null,
+    dragOffset: { x: 0, y: 0 },
+    startY: 0
+  });
 
   // Persist
   useEffect(() => {
@@ -223,6 +231,60 @@ function DayPlannerApp() {
 
   const onEdit = (a) => setForm({ ...a });
   const onDelete = (id) => setActivities((prev) => prev.filter((a) => a.id !== id));
+
+  // Drag and drop handlers
+  const onDragStart = (e, activity) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const startY = e.clientY - rect.top;
+    
+    setDragState({
+      isDragging: true,
+      draggedActivity: activity,
+      dragOffset: { x: e.clientX - rect.left, y: startY },
+      startY: e.clientY
+    });
+  };
+
+  const onDragMove = (e) => {
+    if (!dragState.isDragging) return;
+    
+    // Update drag position (visual feedback will be handled in render)
+    setDragState(prev => ({
+      ...prev,
+      startY: e.clientY
+    }));
+  };
+
+  const onDragEnd = (e) => {
+    if (!dragState.isDragging) return;
+    
+    // Calculate new time based on drop position
+    const calendarRect = e.currentTarget.closest('.calendar-timeline').getBoundingClientRect();
+    const relativeY = e.clientY - calendarRect.top;
+    const newTimeMinutes = Math.round((relativeY / CAL_HEIGHT_PX) * DAY_MINUTES);
+    
+    // Snap to 15-minute intervals
+    const snappedMinutes = Math.round(newTimeMinutes / 15) * 15;
+    const clampedMinutes = Math.max(0, Math.min(23 * 60 + 45, snappedMinutes)); // Max 11:45 PM
+    
+    const newStartTime = toHHMM(clampedMinutes);
+    
+    // Update the activity
+    setActivities(prev => prev.map(a => 
+      a.id === dragState.draggedActivity.id 
+        ? { ...a, start: newStartTime }
+        : a
+    ));
+    
+    // Reset drag state
+    setDragState({
+      isDragging: false,
+      draggedActivity: null,
+      dragOffset: { x: 0, y: 0 },
+      startY: 0
+    });
+  };
 
   // ---------- Rendering helpers ----------
   const colorFor = (category) => CATEGORY_COLORS[category] || CATEGORY_COLORS.Other;
@@ -341,7 +403,13 @@ function DayPlannerApp() {
           <h2 className="font-semibold mb-2">Daily Calendar</h2>
           <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4">
             {/* Timeline */}
-            <div className="relative" style={{ height: CAL_HEIGHT_PX }}>
+            <div 
+              className="relative calendar-timeline" 
+              style={{ height: CAL_HEIGHT_PX }}
+              onMouseMove={onDragMove}
+              onMouseUp={onDragEnd}
+              onMouseLeave={onDragEnd}
+            >
               {/* Hour grid */}
               {hourMarks.map((m, idx) => (
                 <div key={idx} className="absolute left-0 right-0 border-t border-slate-100 dark:border-slate-700 flex items-start" style={{ top: (m / DAY_MINUTES) * CAL_HEIGHT_PX }}>
@@ -362,15 +430,27 @@ function DayPlannerApp() {
                 const endM = startM + a.duration;
                 const top = (startM / DAY_MINUTES) * CAL_HEIGHT_PX;
                 const height = Math.max(18, (a.duration / DAY_MINUTES) * CAL_HEIGHT_PX);
+                const isDragging = dragState.isDragging && dragState.draggedActivity?.id === a.id;
+                
                 return (
                   <button
                     key={a.id}
-                    onClick={() => onEdit(a)}
-                    className="absolute left-14 right-3 text-left rounded-xl shadow-sm ring-1 ring-black/5 hover:shadow-md transition-shadow"
-                    style={{ top, height, background: colorFor(a.category) }}
+                    onClick={(e) => {
+                      if (!dragState.isDragging) onEdit(a);
+                    }}
+                    onMouseDown={(e) => onDragStart(e, a)}
+                    className={`absolute left-14 right-3 text-left rounded-xl shadow-sm ring-1 ring-black/5 hover:shadow-md transition-shadow cursor-move ${
+                      isDragging ? 'opacity-50 z-50' : ''
+                    }`}
+                    style={{ 
+                      top, 
+                      height, 
+                      background: colorFor(a.category),
+                      userSelect: 'none'
+                    }}
                     title={`${a.title || a.category} • ${to12Hour(a.start)}–${minsTo12Hour(endM)} • ${fmtDuration(a.duration)}`}
                   >
-                    <div className="px-3 py-2 text-white/95 text-sm">
+                    <div className="px-3 py-2 text-white/95 text-sm pointer-events-none">
                       <div className="font-semibold truncate">{a.title || a.category}</div>
                       <div className="text-xs opacity-80">{to12Hour(a.start)}–{minsTo12Hour(endM)} • {a.category}</div>
                     </div>
@@ -379,6 +459,7 @@ function DayPlannerApp() {
               })}
             </div>
           </div>
+
         </section>
       </div>
 
