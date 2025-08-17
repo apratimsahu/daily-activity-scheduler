@@ -196,7 +196,7 @@ function DayPlannerApp() {
 
   const nextActivity = useMemo(() => {
     return (
-      sorted.find((a) => toMinutes(a.start) >= nowMin) || null
+      sorted.find((a) => a.category !== 'Sleep' && toMinutes(a.start) >= nowMin) || null
     );
   }, [sorted, nowMin]);
 
@@ -257,6 +257,11 @@ function DayPlannerApp() {
     const free = clamp(span - busy, 0, span);
     return free;
   }, [sorted, nowMin, nextSleep]);
+
+  const timeUntilSleep = useMemo(() => {
+    if (!nextSleep) return null;
+    return clamp(nextSleep.startMinutes - nowMin, 0, 24 * 60);
+  }, [nextSleep, nowMin]);
 
   // Calendar dimensions
   const DAY_MINUTES = 24 * 60;
@@ -557,10 +562,16 @@ function DayPlannerApp() {
             <Card className="sm:col-span-2">
               <div className="text-sm text-slate-500 dark:text-slate-400">Active (free) time before next Sleep</div>
               {nextSleep ? (
-                <div className="flex items-end gap-3 flex-wrap">
-                  <div className="text-2xl font-semibold">{fmtDuration(freeUntilSleep)}</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                    until sleep at <span className="font-medium">{to12Hour(nextSleep.start)}</span>
+                <div className="space-y-2">
+                  <div className="flex items-end gap-3 flex-wrap">
+                    <div className="text-2xl font-semibold">{fmtDuration(freeUntilSleep)}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      free time until sleep at <span className="font-medium">{to12Hour(nextSleep.start)}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-slate-600 dark:text-slate-400">Time until sleep:</span>
+                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmtDuration(timeUntilSleep)}</span>
                   </div>
                 </div>
               ) : (
