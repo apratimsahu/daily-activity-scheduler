@@ -144,7 +144,9 @@ function DayPlannerApp() {
     isDragging: false,
     draggedActivity: null,
     dragOffset: { x: 0, y: 0 },
-    startY: 0
+    startY: 0,
+    shadowPosition: null, // { top: number, startTime: string }
+    currentMouseY: 0
   });
 
   // Persist
@@ -242,17 +244,36 @@ function DayPlannerApp() {
       isDragging: true,
       draggedActivity: activity,
       dragOffset: { x: e.clientX - rect.left, y: startY },
-      startY: e.clientY
+      startY: e.clientY,
+      shadowPosition: null,
+      currentMouseY: e.clientY
     });
   };
 
   const onDragMove = (e) => {
     if (!dragState.isDragging) return;
     
-    // Update drag position (visual feedback will be handled in render)
+    // Calculate shadow position based on current mouse position
+    const calendarRect = e.currentTarget.getBoundingClientRect();
+    const relativeY = e.clientY - calendarRect.top;
+    const newTimeMinutes = Math.round((relativeY / CAL_HEIGHT_PX) * DAY_MINUTES);
+    
+    // Snap to 15-minute intervals
+    const snappedMinutes = Math.round(newTimeMinutes / 15) * 15;
+    const clampedMinutes = Math.max(0, Math.min(23 * 60 + 45, snappedMinutes));
+    
+    const shadowTop = (clampedMinutes / DAY_MINUTES) * CAL_HEIGHT_PX;
+    const shadowStartTime = toHHMM(clampedMinutes);
+    
+    // Update drag position and shadow
     setDragState(prev => ({
       ...prev,
-      startY: e.clientY
+      startY: e.clientY,
+      currentMouseY: e.clientY,
+      shadowPosition: {
+        top: shadowTop,
+        startTime: shadowStartTime
+      }
     }));
   };
 
@@ -282,7 +303,9 @@ function DayPlannerApp() {
       isDragging: false,
       draggedActivity: null,
       dragOffset: { x: 0, y: 0 },
-      startY: 0
+      startY: 0,
+      shadowPosition: null,
+      currentMouseY: 0
     });
   };
 
@@ -457,6 +480,25 @@ function DayPlannerApp() {
                   </button>
                 );
               })}
+
+              {/* Shadow preview during drag */}
+              {dragState.isDragging && dragState.shadowPosition && dragState.draggedActivity && (
+                <div
+                  className="absolute left-14 right-3 rounded-xl border-2 border-dashed border-slate-400 bg-slate-200/50 dark:bg-slate-600/50 z-40"
+                  style={{
+                    top: dragState.shadowPosition.top,
+                    height: Math.max(18, (dragState.draggedActivity.duration / DAY_MINUTES) * CAL_HEIGHT_PX),
+                    pointerEvents: 'none'
+                  }}
+                >
+                  <div className="px-3 py-2 text-slate-600 dark:text-slate-300 text-sm">
+                    <div className="font-semibold truncate opacity-75">{dragState.draggedActivity.title || dragState.draggedActivity.category}</div>
+                    <div className="text-xs opacity-60">
+                      {to12Hour(dragState.shadowPosition.startTime)}–{minsTo12Hour((toMinutes(dragState.shadowPosition.startTime) + dragState.draggedActivity.duration) % (24 * 60))} • {dragState.draggedActivity.category}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
