@@ -1364,7 +1364,14 @@ function DayProgressBar({ nowMin, sleepConfig, nextSleep, freeUntilSleep, sorted
                 }`}
                 style={{
                   left: `${Math.max(0, segmentStartPos)}%`,
-                  width: `${Math.max(0, segmentWidth)}%`
+                  width: `${Math.max(0, segmentWidth)}%`,
+                  backgroundImage: `repeating-linear-gradient(
+                    45deg,
+                    transparent,
+                    transparent 2px,
+                    rgba(255, 255, 255, 0.15) 2px,
+                    rgba(255, 255, 255, 0.15) 4px
+                  )`
                 }}
                 title={segment.type === 'past-scheduled' 
                   ? `Past: ${segment.activity.title || segment.activity.category} (${fmtDuration(segment.duration)})`
