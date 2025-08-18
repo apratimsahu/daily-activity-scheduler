@@ -540,6 +540,16 @@ function DayPlannerApp() {
               <AnalogClock now={now} />
             </Card>
 
+            <Card className="sm:col-span-2">
+              <DayProgressBar 
+                nowMin={nowMin} 
+                sleepConfig={sleepConfig} 
+                nextSleep={nextSleep}
+                freeUntilSleep={freeUntilSleep}
+                sorted={sorted}
+              />
+            </Card>
+
             <Card>
               <div className="text-sm text-slate-500 dark:text-slate-400">Next activity</div>
               {nextActivity ? (
@@ -555,25 +565,6 @@ function DayPlannerApp() {
               )}
             </Card>
 
-            <Card className="sm:col-span-2">
-              <div className="text-sm text-slate-500 dark:text-slate-400">Active (free) time before next Sleep</div>
-              {nextSleep ? (
-                <div className="space-y-2">
-                  <div className="flex items-end gap-3 flex-wrap">
-                    <div className="text-2xl font-semibold">{fmtDuration(freeUntilSleep)}</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                      free time until sleep at <span className="font-medium">{to12Hour(nextSleep.start)}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-slate-600 dark:text-slate-400">Time until sleep:</span>
-                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmtDuration(timeUntilSleep)}</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-slate-500 dark:text-slate-400">No upcoming Sleep scheduled today</div>
-              )}
-            </Card>
           </div>
 
           {/* Add/Edit Form */}
@@ -1080,6 +1071,236 @@ function AnalogClock({ now }) {
 
       {/* Outer glow effect */}
       <div className="absolute -inset-2 rounded-full bg-gradient-to-r from-emerald-200/20 to-blue-200/20 dark:from-emerald-400/10 dark:to-blue-400/10 blur-xl opacity-30" />
+    </div>
+  );
+}
+
+// ---------- Day Progress Bar Component ----------
+function DayProgressBar({ nowMin, sleepConfig, nextSleep, freeUntilSleep, sorted }) {
+  // Calculate awake period boundaries
+  const sleepStart = toMinutes(sleepConfig.start);
+  const sleepEnd = (sleepStart + sleepConfig.duration) % (24 * 60);
+  const awakeMinutes = 24 * 60 - sleepConfig.duration;
+  
+  // Calculate current position within the awake period
+  let currentAwakePosition = 0;
+  
+  if (sleepStart < sleepEnd) {
+    // Sleep doesn't cross midnight (e.g., 02:00 to 08:00)
+    if (nowMin >= sleepStart && nowMin < sleepEnd) {
+      // Currently sleeping - show as if at start of awake period
+      currentAwakePosition = 0;
+    } else if (nowMin >= sleepEnd) {
+      // After sleep (same day)
+      currentAwakePosition = nowMin - sleepEnd;
+    } else {
+      // Before sleep (next day's schedule)
+      currentAwakePosition = (nowMin + (24 * 60) - sleepEnd);
+    }
+  } else {
+    // Sleep crosses midnight (e.g., 23:00 to 08:00)
+    if (nowMin >= sleepStart || nowMin < sleepEnd) {
+      // Currently sleeping - show as if at start of awake period
+      currentAwakePosition = 0;
+    } else {
+      // In awake period (between sleepEnd and sleepStart)
+      currentAwakePosition = nowMin - sleepEnd;
+    }
+  }
+  
+  // Clamp to awake period
+  currentAwakePosition = Math.max(0, Math.min(awakeMinutes, currentAwakePosition));
+  
+  // Calculate progress percentage
+  const progressPercentage = (currentAwakePosition / awakeMinutes) * 100;
+  
+  // Calculate remaining time until sleep
+  const remainingMinutes = awakeMinutes - currentAwakePosition;
+  
+  // Calculate total scheduled activities from now until sleep
+  let totalScheduledFromNow = 0;
+  if (nextSleep) {
+    const horizonA = nowMin;
+    const horizonB = nextSleep.startMinutes;
+    
+    for (const a of sorted) {
+      const aStart = toMinutes(a.start);
+      const aEnd = aStart + a.duration;
+      
+      // Handle activities that might span across midnight
+      let adjustedStart = aStart;
+      let adjustedEnd = aEnd;
+      
+      // If we're looking at tomorrow's sleep, we need to consider today's activities
+      if (horizonB > 24 * 60) {
+        if (aStart < nowMin) {
+          adjustedStart = aStart + (24 * 60);
+          adjustedEnd = aEnd + (24 * 60);
+        }
+      }
+      
+      totalScheduledFromNow += overlapMins(horizonA, horizonB, adjustedStart, adjustedEnd);
+    }
+  }
+  
+  // Create time segments for remaining day visualization
+  const createTimeSegments = () => {
+    if (!nextSleep) return [];
+    
+    const segments = [];
+    const currentTime = nowMin;
+    const sleepTime = nextSleep.startMinutes;
+    
+    // Get activities that occur from now until sleep
+    const remainingActivities = sorted
+      .filter(a => {
+        const aStart = toMinutes(a.start);
+        let adjustedStart = aStart;
+        
+        // Handle midnight crossover
+        if (sleepTime > 24 * 60 && aStart < currentTime) {
+          adjustedStart = aStart + (24 * 60);
+        }
+        
+        return adjustedStart >= currentTime && adjustedStart < sleepTime;
+      })
+      .map(a => {
+        const aStart = toMinutes(a.start);
+        let adjustedStart = aStart;
+        
+        // Handle midnight crossover
+        if (sleepTime > 24 * 60 && aStart < currentTime) {
+          adjustedStart = aStart + (24 * 60);
+        }
+        
+        return {
+          ...a,
+          adjustedStart,
+          adjustedEnd: adjustedStart + a.duration
+        };
+      })
+      .sort((a, b) => a.adjustedStart - b.adjustedStart);
+    
+    let lastTime = currentTime;
+    
+    // Create segments based on activities
+    for (const activity of remainingActivities) {
+      // Add free time segment before this activity (if any)
+      if (activity.adjustedStart > lastTime) {
+        segments.push({
+          type: 'free',
+          start: lastTime,
+          end: activity.adjustedStart,
+          duration: activity.adjustedStart - lastTime
+        });
+      }
+      
+      // Add scheduled activity segment
+      const activityEnd = Math.min(activity.adjustedEnd, sleepTime);
+      if (activityEnd > activity.adjustedStart) {
+        segments.push({
+          type: 'scheduled',
+          start: activity.adjustedStart,
+          end: activityEnd,
+          duration: activityEnd - activity.adjustedStart,
+          activity
+        });
+      }
+      
+      lastTime = Math.max(lastTime, activityEnd);
+    }
+    
+    // Add final free time segment until sleep (if any)
+    if (lastTime < sleepTime) {
+      segments.push({
+        type: 'free',
+        start: lastTime,
+        end: sleepTime,
+        duration: sleepTime - lastTime
+      });
+    }
+    
+    return segments;
+  };
+  
+  const timeSegments = createTimeSegments();
+  
+  return (
+    <div className="space-y-3">
+      <div className="text-sm text-slate-500 dark:text-slate-400 text-center">Day Progress</div>
+      
+      {/* Progress bar with percentage indicator */}
+      <div className="flex items-center gap-3">
+        {/* Day progress percentage indicator */}
+        <div className="flex-shrink-0">
+          <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 px-2 py-0.5 rounded shadow-sm border border-slate-200 dark:border-slate-600">
+            {Math.round(progressPercentage)}%
+          </div>
+        </div>
+        
+        {/* Progress bar */}
+        <div className="flex-1 relative h-6 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+          {/* Elapsed time (grey) */}
+          <div 
+            className="absolute top-0 left-0 h-full bg-slate-400 dark:bg-slate-500 transition-all duration-1000 ease-out"
+            style={{ width: `${progressPercentage}%` }}
+          />
+          
+          {/* Time segments for remaining day */}
+          {timeSegments.map((segment, index) => {
+            const segmentStartPos = progressPercentage + ((segment.start - nowMin) / awakeMinutes) * 100;
+            const segmentWidth = (segment.duration / awakeMinutes) * 100;
+            
+            return (
+              <div
+                key={index}
+                className={`absolute top-0 h-full transition-all duration-1000 ease-out ${
+                  segment.type === 'free' 
+                    ? 'bg-emerald-400 dark:bg-emerald-500' 
+                    : 'bg-amber-400 dark:bg-amber-500'
+                }`}
+                style={{
+                  left: `${Math.max(0, segmentStartPos)}%`,
+                  width: `${Math.max(0, segmentWidth)}%`
+                }}
+                title={segment.type === 'scheduled' 
+                  ? `${segment.activity.title || segment.activity.category} (${fmtDuration(segment.duration)})`
+                  : `Free time (${fmtDuration(segment.duration)})`
+                }
+              />
+            );
+          })}
+          
+          {/* Current time indicator */}
+          <div 
+            className="absolute top-0 h-full w-0.5 bg-slate-800 dark:bg-slate-200 shadow-lg transition-all duration-1000 ease-out z-10"
+            style={{ left: `${progressPercentage}%` }}
+          />
+        </div>
+      </div>
+      
+      {/* Time labels */}
+      <div className="grid grid-cols-2 gap-4 text-xs text-slate-500 dark:text-slate-400">
+        <div className="space-y-1">
+          <div>
+            Until sleep: <span className="font-semibold text-blue-600 dark:text-blue-400">{fmtDuration(remainingMinutes)}</span>
+          </div>
+          <div>
+            Awake: <span className="font-semibold text-slate-500 dark:text-slate-400">{fmtDuration(currentAwakePosition)} (total {fmtDuration(awakeMinutes)})</span>
+          </div>
+        </div>
+        <div className="space-y-1 text-right">
+          <div>
+            Free time left: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmtDuration(freeUntilSleep || 0)}</span>
+          </div>
+          <div>
+            Scheduled left: <span className="font-semibold text-amber-600 dark:text-amber-400">
+              {fmtDuration(totalScheduledFromNow)} ({remainingMinutes > 0 ? Math.round((totalScheduledFromNow / remainingMinutes) * 100) : 0}%)
+            </span>
+          </div>
+        </div>
+      </div>
+      
     </div>
   );
 }
