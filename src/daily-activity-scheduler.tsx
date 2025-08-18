@@ -1036,7 +1036,7 @@ function AnalogClock({ now }) {
 
         {/* Hour hand */}
         <div
-          className="absolute w-1 h-12 bg-slate-700 dark:bg-slate-200 rounded-full shadow-sm z-20 transition-transform duration-1000 ease-out"
+          className="absolute w-1 h-12 bg-slate-700 dark:bg-slate-200 rounded-full shadow-sm z-20"
           style={{
             top: '50%',
             left: '50%',
@@ -1047,7 +1047,7 @@ function AnalogClock({ now }) {
 
         {/* Minute hand */}
         <div
-          className="absolute w-0.5 h-16 bg-slate-800 dark:bg-slate-100 rounded-full shadow-sm z-30 transition-transform duration-1000 ease-out"
+          className="absolute w-0.5 h-16 bg-slate-800 dark:bg-slate-100 rounded-full shadow-sm z-30"
           style={{
             top: '50%',
             left: '50%',
