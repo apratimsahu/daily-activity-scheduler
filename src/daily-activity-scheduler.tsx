@@ -550,18 +550,17 @@ function DayPlannerApp() {
               />
             </Card>
 
-            <Card>
-              <div className="text-sm text-slate-500 dark:text-slate-400">Next activity</div>
+            <Card className="sm:col-span-2">
               {nextActivity ? (
-                <div>
-                  <div className="font-medium">{nextActivity.title || nextActivity.category} @ {to12Hour(nextActivity.start)}</div>
-                  <div className="text-2xl font-semibold mt-1">
-                    {fmtDuration(minsUntilNext)}
+                <div className="text-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-slate-500 dark:text-slate-400">Next activity in </span>
+                    <span className="font-semibold">{fmtDuration(minsUntilNext)}</span>
                   </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">until {nextActivity.category.toLowerCase()}</div>
+                  <div className="font-medium">{nextActivity.title || nextActivity.category} @ {to12Hour(nextActivity.start)}</div>
                 </div>
               ) : (
-                <div className="text-slate-500 dark:text-slate-400">None left today</div>
+                <div className="text-slate-500 dark:text-slate-400 text-sm">None left today</div>
               )}
             </Card>
 
