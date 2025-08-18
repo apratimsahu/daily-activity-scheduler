@@ -536,12 +536,8 @@ function DayPlannerApp() {
 
           {/* Countdown Cards */}
           <div className="grid sm:grid-cols-2 gap-3">
-            <Card>
-              <div className="text-sm text-slate-500 dark:text-slate-400">Time now</div>
-              <div className="text-2xl font-semibold">
-                {formatCurrentTime(now)}
-              </div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">{now.toLocaleDateString()}</div>
+            <Card className="sm:col-span-2">
+              <AnalogClock now={now} />
             </Card>
 
             <Card>
@@ -956,6 +952,135 @@ function IconButton({ children, onClick, label }) {
     >
       <span className="text-base leading-none">{children}</span>
     </button>
+  );
+}
+
+// ---------- Analog Clock Component ----------
+function AnalogClock({ now }) {
+  const hours = now.getHours() % 12;
+  const minutes = now.getMinutes();
+  const seconds = now.getSeconds();
+  const milliseconds = now.getMilliseconds();
+
+  // Calculate angles (12 o'clock = 0°)
+  const hourAngle = (hours * 30) + (minutes * 0.5) + (seconds * 0.00833); // Include seconds for smoother hour hand
+  const minuteAngle = (minutes * 6) + (seconds * 0.1); // Include seconds for smoother minute hand
+  const secondAngle = (seconds * 6) + (milliseconds * 0.006); // Include milliseconds for smoother second hand
+
+  // Hour markers (12 positions)
+  const hourMarkers = Array.from({ length: 12 }, (_, i) => {
+    const angle = i * 30; // 30° apart
+    const isMainHour = i % 3 === 0; // 12, 3, 6, 9 are main hours
+    return { angle, isMainHour, number: i === 0 ? 12 : i };
+  });
+
+  // Minute markers (60 positions, but only show some)
+  const minuteMarkers = Array.from({ length: 60 }, (_, i) => {
+    const angle = i * 6; // 6° apart
+    const isVisible = i % 5 !== 0; // Don't show where hour markers are
+    return { angle, isVisible };
+  });
+
+  return (
+    <div className="relative w-48 h-48 mx-auto">
+      {/* Clock face */}
+      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-white to-slate-50 dark:from-slate-700 dark:to-slate-800 shadow-lg border-4 border-slate-200 dark:border-slate-600">
+        {/* Minute markers */}
+        {minuteMarkers.map((marker, i) => marker.isVisible && (
+          <div
+            key={`minute-${i}`}
+            className="absolute w-0.5 h-3 bg-slate-300 dark:bg-slate-500"
+            style={{
+              top: '6px',
+              left: '50%',
+              transformOrigin: '50% 90px',
+              transform: `translateX(-50%) rotate(${marker.angle}deg)`
+            }}
+          />
+        ))}
+
+        {/* Hour markers */}
+        {hourMarkers.map((marker, i) => (
+          <div key={`hour-${i}`}>
+            {/* Hour tick */}
+            <div
+              className={`absolute ${marker.isMainHour ? 'w-1 h-6 bg-slate-600 dark:bg-slate-200' : 'w-0.5 h-4 bg-slate-400 dark:bg-slate-400'}`}
+              style={{
+                top: marker.isMainHour ? '6px' : '8px',
+                left: '50%',
+                transformOrigin: '50% 90px',
+                transform: `translateX(-50%) rotate(${marker.angle}deg)`
+              }}
+            />
+          </div>
+        ))}
+
+        {/* Hour hand */}
+        <div
+          className="absolute w-1 h-12 bg-slate-700 dark:bg-slate-200 rounded-full shadow-sm z-20 transition-transform duration-1000 ease-out"
+          style={{
+            top: '50%',
+            left: '50%',
+            transformOrigin: '50% 100%',
+            transform: `translate(-50%, -100%) rotate(${hourAngle}deg)`
+          }}
+        />
+
+        {/* Minute hand */}
+        <div
+          className="absolute w-0.5 h-16 bg-slate-800 dark:bg-slate-100 rounded-full shadow-sm z-30 transition-transform duration-1000 ease-out"
+          style={{
+            top: '50%',
+            left: '50%',
+            transformOrigin: '50% 100%',
+            transform: `translate(-50%, -100%) rotate(${minuteAngle}deg)`
+          }}
+        />
+
+        {/* Second hand */}
+        <div
+          className="absolute w-px h-20 z-40"
+          style={{
+            top: '50%',
+            left: '50%',
+            transformOrigin: '50% 100%',
+            transform: `translate(-50%, -100%) rotate(${secondAngle}deg)`
+          }}
+        >
+          {/* Second hand with different colored sections */}
+          <div className="h-4 bg-transparent" />
+          <div className="h-14 bg-red-500 w-full" />
+          <div className="h-2 bg-red-500 w-full" />
+        </div>
+
+        {/* Center dot */}
+        <div className="absolute top-1/2 left-1/2 w-3 h-3 bg-slate-800 dark:bg-slate-100 rounded-full transform -translate-x-1/2 -translate-y-1/2 z-50 shadow-sm" />
+        
+        {/* Center highlight */}
+        <div className="absolute top-1/2 left-1/2 w-1.5 h-1.5 bg-white dark:bg-slate-600 rounded-full transform -translate-x-1/2 -translate-y-1/2 z-50" />
+
+        {/* Outer rim highlight */}
+        <div className="absolute inset-1 rounded-full border border-slate-100 dark:border-slate-600 opacity-50" />
+        
+        {/* Inner shadow */}
+        <div className="absolute inset-2 rounded-full shadow-inner opacity-20" />
+      </div>
+
+      {/* Date text */}
+      <div className="absolute top-16 left-1/2 transform -translate-x-1/2 text-xs font-medium text-slate-500 dark:text-slate-400">
+        {now.getDate()}{now.getDate() === 1 || now.getDate() === 21 || now.getDate() === 31 ? 'st' : 
+         now.getDate() === 2 || now.getDate() === 22 ? 'nd' : 
+         now.getDate() === 3 || now.getDate() === 23 ? 'rd' : 'th'} {now.toLocaleDateString('en-US', { month: 'short' })}
+      </div>
+      
+      {/* Digital time display */}
+      <div className="absolute bottom-12 left-1/2 transform -translate-x-1/2 bg-slate-100 dark:bg-slate-600 rounded-lg px-2 py-1 text-xs font-mono text-slate-700 dark:text-slate-200 shadow-sm">
+        {formatCurrentTime(now)}
+      </div>
+
+      {/* Outer glow effect */}
+      <div className="absolute -inset-2 rounded-full bg-gradient-to-r from-emerald-200/20 to-blue-200/20 dark:from-emerald-400/10 dark:to-blue-400/10 blur-xl opacity-30" />
+    </div>
   );
 }
 
