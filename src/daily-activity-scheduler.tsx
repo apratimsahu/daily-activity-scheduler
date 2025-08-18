@@ -859,67 +859,96 @@ function SleepConfig({ sleepConfig, setSleepConfig }) {
 // ---------- Form Component ----------
 function Form({ form, setForm, onSubmit, onCancel }) {
   const categories = Object.keys(CATEGORY_COLORS);
+  const [isCollapsed, setIsCollapsed] = useState(() => !form.id); // Collapsed by default unless editing
+
+  // Auto-expand when editing
+  useEffect(() => {
+    if (form.id) {
+      setIsCollapsed(false);
+    }
+  }, [form.id]);
 
   return (
     <form onSubmit={onSubmit} className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">{form.id ? "Edit Activity" : "Add Activity"}</h2>
-        {form.id && (
-          <button type="button" onClick={onCancel} className="text-sm px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-200">Cancel</button>
-        )}
-      </div>
-
-      <div className="grid sm:grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <label className="text-sm text-slate-600 dark:text-slate-300">Title</label>
-          <input
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300"
-            placeholder="e.g., Deep Work"
-            value={form.title}
-            onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-sm text-slate-600 dark:text-slate-300">Category</label>
-          <select
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2 bg-white"
-            value={form.category}
-            onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+        <div className="flex items-center gap-2">
+          {form.id && (
+            <button type="button" onClick={onCancel} className="text-sm px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-slate-200">Cancel</button>
+          )}
+          <button
+            type="button"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            aria-label={isCollapsed ? "Expand add activity form" : "Collapse add activity form"}
           >
-            {categories.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-sm text-slate-600 dark:text-slate-300">Start Time</label>
-          <TimeSelector
-            value={form.start}
-            onChange={(time) => setForm((f) => ({ ...f, start: time }))}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-sm text-slate-600 dark:text-slate-300">Duration (minutes)</label>
-          <input
-            type="number"
-            min={5}
-            step={5}
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2"
-            value={form.duration}
-            onChange={(e) => setForm((f) => ({ ...f, duration: Number(e.target.value) }))}
-          />
+            <svg 
+              className={`w-5 h-5 text-slate-500 transition-transform ${isCollapsed ? '' : 'rotate-180'}`} 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
         </div>
       </div>
+      
+      {!isCollapsed && (
+        <>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-sm text-slate-600 dark:text-slate-300">Title</label>
+              <input
+                className="w-full rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                placeholder="e.g., Deep Work"
+                value={form.title}
+                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+              />
+            </div>
 
-      <div className="flex items-center gap-2">
-        <button type="submit" className="px-4 py-2 rounded-xl bg-emerald-500 text-white font-medium hover:bg-emerald-600">
-          {form.id ? "Update" : "Add"}
-        </button>
-        <span className="text-xs text-slate-400 dark:text-slate-500">Click an activity block to edit</span>
-      </div>
+            <div className="space-y-1">
+              <label className="text-sm text-slate-600 dark:text-slate-300">Category</label>
+              <select
+                className="w-full rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2 bg-white"
+                value={form.category}
+                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+              >
+                {categories.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm text-slate-600 dark:text-slate-300">Start Time</label>
+              <TimeSelector
+                value={form.start}
+                onChange={(time) => setForm((f) => ({ ...f, start: time }))}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm text-slate-600 dark:text-slate-300">Duration (minutes)</label>
+              <input
+                type="number"
+                min={5}
+                step={5}
+                className="w-full rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2"
+                value={form.duration}
+                onChange={(e) => setForm((f) => ({ ...f, duration: Number(e.target.value) }))}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button type="submit" className="px-4 py-2 rounded-xl bg-emerald-500 text-white font-medium hover:bg-emerald-600">
+              {form.id ? "Update" : "Add"}
+            </button>
+            <span className="text-xs text-slate-400 dark:text-slate-500">Click an activity block to edit</span>
+          </div>
+        </>
+      )}
     </form>
   );
 }
@@ -1142,68 +1171,125 @@ function DayProgressBar({ nowMin, sleepConfig, nextSleep, freeUntilSleep, sorted
     }
   }
   
-  // Create time segments for remaining day visualization
+  // Create time segments for the entire day visualization (past and future)
   const createTimeSegments = () => {
-    if (!nextSleep) return [];
+    if (!nextSleep) return { pastSegments: [], futureSegments: [] };
     
-    const segments = [];
     const currentTime = nowMin;
     const sleepTime = nextSleep.startMinutes;
     
-    // Get activities that occur from now until sleep
-    const remainingActivities = sorted
-      .filter(a => {
-        const aStart = toMinutes(a.start);
-        let adjustedStart = aStart;
-        
-        // Handle midnight crossover
-        if (sleepTime > 24 * 60 && aStart < currentTime) {
-          adjustedStart = aStart + (24 * 60);
-        }
-        
-        return adjustedStart >= currentTime && adjustedStart < sleepTime;
-      })
+    // Calculate the start of the awake period
+    const awakeStartTime = sleepEnd;
+    
+    // Get all activities during the awake period
+    const allActivities = sorted
+      .filter(a => a.category !== 'Sleep') // Exclude sleep activities
       .map(a => {
         const aStart = toMinutes(a.start);
         let adjustedStart = aStart;
+        let adjustedEnd = aStart + a.duration;
         
-        // Handle midnight crossover
-        if (sleepTime > 24 * 60 && aStart < currentTime) {
+        // Handle midnight crossover for activities
+        if (sleepTime > 24 * 60 && aStart < awakeStartTime) {
           adjustedStart = aStart + (24 * 60);
+          adjustedEnd = adjustedStart + a.duration;
         }
         
         return {
           ...a,
           adjustedStart,
-          adjustedEnd: adjustedStart + a.duration
+          adjustedEnd
         };
       })
+      .filter(a => a.adjustedStart >= awakeStartTime && a.adjustedStart < sleepTime)
       .sort((a, b) => a.adjustedStart - b.adjustedStart);
     
-    let lastTime = currentTime;
+    const pastSegments = [];
+    const futureSegments = [];
     
-    // Create segments based on activities
-    for (const activity of remainingActivities) {
-      // Add free time segment before this activity (if any)
-      if (activity.adjustedStart > lastTime) {
-        segments.push({
-          type: 'free',
-          start: lastTime,
-          end: activity.adjustedStart,
-          duration: activity.adjustedStart - lastTime
-        });
+    // Process all activities and split them across past/future based on current time
+    let lastTime = awakeStartTime;
+    
+    for (const activity of allActivities) {
+      const activityStart = activity.adjustedStart;
+      const activityEnd = Math.min(activity.adjustedEnd, sleepTime);
+      
+      // Add free time before this activity starts
+      if (activityStart > lastTime) {
+        const freeEnd = Math.min(activityStart, sleepTime);
+        
+        if (lastTime < currentTime && freeEnd > lastTime) {
+          // Past free time portion
+          const pastFreeEnd = Math.min(freeEnd, currentTime);
+          if (pastFreeEnd > lastTime) {
+            pastSegments.push({
+              type: 'past-free',
+              start: lastTime,
+              end: pastFreeEnd,
+              duration: pastFreeEnd - lastTime
+            });
+          }
+          
+          // Future free time portion
+          if (freeEnd > currentTime && currentTime < freeEnd) {
+            futureSegments.push({
+              type: 'free',
+              start: Math.max(currentTime, lastTime),
+              end: freeEnd,
+              duration: freeEnd - Math.max(currentTime, lastTime)
+            });
+          }
+        } else if (lastTime >= currentTime) {
+          // Entirely in the future
+          futureSegments.push({
+            type: 'free',
+            start: lastTime,
+            end: freeEnd,
+            duration: freeEnd - lastTime
+          });
+        }
       }
       
-      // Add scheduled activity segment
-      const activityEnd = Math.min(activity.adjustedEnd, sleepTime);
-      if (activityEnd > activity.adjustedStart) {
-        segments.push({
-          type: 'scheduled',
-          start: activity.adjustedStart,
-          end: activityEnd,
-          duration: activityEnd - activity.adjustedStart,
-          activity
-        });
+      // Process the activity itself
+      if (activityEnd > activityStart) {
+        if (activityStart >= currentTime) {
+          // Activity is entirely in the future
+          futureSegments.push({
+            type: 'scheduled',
+            start: activityStart,
+            end: activityEnd,
+            duration: activityEnd - activityStart,
+            activity
+          });
+        } else if (activityEnd <= currentTime) {
+          // Activity is entirely in the past
+          pastSegments.push({
+            type: 'past-scheduled',
+            start: activityStart,
+            end: activityEnd,
+            duration: activityEnd - activityStart,
+            activity
+          });
+        } else {
+          // Activity spans current time (ongoing activity)
+          // Past portion (completed part)
+          pastSegments.push({
+            type: 'past-scheduled',
+            start: activityStart,
+            end: currentTime,
+            duration: currentTime - activityStart,
+            activity
+          });
+          
+          // Future portion (remaining part)
+          futureSegments.push({
+            type: 'scheduled',
+            start: currentTime,
+            end: activityEnd,
+            duration: activityEnd - currentTime,
+            activity
+          });
+        }
       }
       
       lastTime = Math.max(lastTime, activityEnd);
@@ -1211,18 +1297,42 @@ function DayProgressBar({ nowMin, sleepConfig, nextSleep, freeUntilSleep, sorted
     
     // Add final free time segment until sleep (if any)
     if (lastTime < sleepTime) {
-      segments.push({
-        type: 'free',
-        start: lastTime,
-        end: sleepTime,
-        duration: sleepTime - lastTime
-      });
+      if (lastTime < currentTime) {
+        // Past free time portion
+        const pastFreeEnd = Math.min(currentTime, sleepTime);
+        if (pastFreeEnd > lastTime) {
+          pastSegments.push({
+            type: 'past-free',
+            start: lastTime,
+            end: pastFreeEnd,
+            duration: pastFreeEnd - lastTime
+          });
+        }
+        
+        // Future free time portion
+        if (sleepTime > currentTime) {
+          futureSegments.push({
+            type: 'free',
+            start: Math.max(currentTime, lastTime),
+            end: sleepTime,
+            duration: sleepTime - Math.max(currentTime, lastTime)
+          });
+        }
+      } else {
+        // Entirely in the future
+        futureSegments.push({
+          type: 'free',
+          start: lastTime,
+          end: sleepTime,
+          duration: sleepTime - lastTime
+        });
+      }
     }
     
-    return segments;
+    return { pastSegments, futureSegments };
   };
   
-  const timeSegments = createTimeSegments();
+  const { pastSegments, futureSegments } = createTimeSegments();
   
   return (
     <div className="space-y-3">
@@ -1239,20 +1349,39 @@ function DayProgressBar({ nowMin, sleepConfig, nextSleep, freeUntilSleep, sorted
         
         {/* Progress bar */}
         <div className="flex-1 relative h-6 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-          {/* Elapsed time (grey) */}
-          <div 
-            className="absolute top-0 left-0 h-full bg-slate-400 dark:bg-slate-500 transition-all duration-1000 ease-out"
-            style={{ width: `${progressPercentage}%` }}
-          />
-          
-          {/* Time segments for remaining day */}
-          {timeSegments.map((segment, index) => {
-            const segmentStartPos = progressPercentage + ((segment.start - nowMin) / awakeMinutes) * 100;
+          {/* Past time segments (before current time) */}
+          {pastSegments.map((segment, index) => {
+            const segmentStartPos = ((segment.start - sleepEnd) / awakeMinutes) * 100;
             const segmentWidth = (segment.duration / awakeMinutes) * 100;
             
             return (
               <div
-                key={index}
+                key={`past-${index}`}
+                className={`absolute top-0 h-full transition-all duration-1000 ease-out ${
+                  segment.type === 'past-free' 
+                    ? 'bg-slate-300 dark:bg-slate-600' 
+                    : 'bg-orange-300/60 dark:bg-orange-400/40'
+                }`}
+                style={{
+                  left: `${Math.max(0, segmentStartPos)}%`,
+                  width: `${Math.max(0, segmentWidth)}%`
+                }}
+                title={segment.type === 'past-scheduled' 
+                  ? `Past: ${segment.activity.title || segment.activity.category} (${fmtDuration(segment.duration)})`
+                  : `Past free time (${fmtDuration(segment.duration)})`
+                }
+              />
+            );
+          })}
+          
+          {/* Future time segments (after current time) */}
+          {futureSegments.map((segment, index) => {
+            const segmentStartPos = ((segment.start - sleepEnd) / awakeMinutes) * 100;
+            const segmentWidth = (segment.duration / awakeMinutes) * 100;
+            
+            return (
+              <div
+                key={`future-${index}`}
                 className={`absolute top-0 h-full transition-all duration-1000 ease-out ${
                   segment.type === 'free' 
                     ? 'bg-emerald-400 dark:bg-emerald-500' 
