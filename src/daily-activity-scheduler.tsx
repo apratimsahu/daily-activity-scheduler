@@ -813,37 +813,59 @@ function TimeSelector({ value, onChange }) {
 
 // ---------- Sleep Configuration Component ----------
 function SleepConfig({ sleepConfig, setSleepConfig }) {
+  const [isCollapsed, setIsCollapsed] = useState(true);
+
   return (
     <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4 space-y-4">
-      <h2 className="font-semibold">Sleep Configuration</h2>
-      
-      <div className="grid sm:grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <label className="text-sm text-slate-600 dark:text-slate-300">Sleep Start Time</label>
-          <TimeSelector
-            value={sleepConfig.start}
-            onChange={(time) => setSleepConfig(prev => ({ ...prev, start: time }))}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-sm text-slate-600 dark:text-slate-300">Sleep Duration (hours)</label>
-          <select
-            className="w-full rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2 bg-white"
-            value={sleepConfig.duration / 60}
-            onChange={(e) => setSleepConfig(prev => ({ ...prev, duration: Number(e.target.value) * 60 }))}
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold">Sleep Configuration</h2>
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+          aria-label={isCollapsed ? "Expand sleep configuration" : "Collapse sleep configuration"}
+        >
+          <svg 
+            className={`w-5 h-5 text-slate-500 transition-transform ${isCollapsed ? '' : 'rotate-180'}`} 
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
           >
-            {Array.from({ length: 9 }, (_, i) => i + 4).map(hours => (
-              <option key={hours} value={hours}>{hours} hours</option>
-            ))}
-          </select>
-        </div>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
       </div>
+      
+      {!isCollapsed && (
+        <>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-sm text-slate-600 dark:text-slate-300">Sleep Start Time</label>
+              <TimeSelector
+                value={sleepConfig.start}
+                onChange={(time) => setSleepConfig(prev => ({ ...prev, start: time }))}
+              />
+            </div>
 
-      <div className="text-xs text-slate-500 dark:text-slate-400">
-        Sleep period: {to12Hour(sleepConfig.start)} - {minsTo12Hour((toMinutes(sleepConfig.start) + sleepConfig.duration) % (24 * 60))} 
-        ({fmtDuration(sleepConfig.duration)})
-      </div>
+            <div className="space-y-1">
+              <label className="text-sm text-slate-600 dark:text-slate-300">Sleep Duration (hours)</label>
+              <select
+                className="w-full rounded-xl border border-slate-200 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 p-2 bg-white"
+                value={sleepConfig.duration / 60}
+                onChange={(e) => setSleepConfig(prev => ({ ...prev, duration: Number(e.target.value) * 60 }))}
+              >
+                {Array.from({ length: 9 }, (_, i) => i + 4).map(hours => (
+                  <option key={hours} value={hours}>{hours} hours</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            Sleep period: {to12Hour(sleepConfig.start)} - {minsTo12Hour((toMinutes(sleepConfig.start) + sleepConfig.duration) % (24 * 60))} 
+            ({fmtDuration(sleepConfig.duration)})
+          </div>
+        </>
+      )}
     </div>
   );
 }
