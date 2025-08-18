@@ -1391,8 +1391,8 @@ function DayProgressBar({ nowMin, sleepConfig, nextSleep, freeUntilSleep, sorted
                 key={`future-${index}`}
                 className={`absolute top-0 h-full transition-all duration-1000 ease-out ${
                   segment.type === 'free' 
-                    ? 'bg-emerald-400 dark:bg-emerald-500' 
-                    : 'bg-amber-400 dark:bg-amber-500'
+                    ? 'bg-gradient-to-b from-emerald-300 via-emerald-400 to-emerald-600 dark:from-emerald-400 dark:via-emerald-500 dark:to-emerald-700' 
+                    : 'bg-gradient-to-b from-amber-300 via-amber-400 to-amber-600 dark:from-amber-400 dark:via-amber-500 dark:to-amber-700'
                 }`}
                 style={{
                   left: `${Math.max(0, segmentStartPos)}%`,
