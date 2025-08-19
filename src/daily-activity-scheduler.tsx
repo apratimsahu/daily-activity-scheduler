@@ -149,6 +149,55 @@ function DayPlannerApp() {
   const [now, setNow] = useState(() => new Date());
   const nowTick = useRef(null);
 
+  // Timer state
+  const [timerState, setTimerState] = useState(() => {
+    try {
+      const saved = localStorage.getItem('planner.timerState');
+      const parsed = saved ? JSON.parse(saved) : null;
+      
+      // If we have saved state but no baseElapsedTime, add it for compatibility
+      if (parsed && typeof parsed.baseElapsedTime === 'undefined') {
+        parsed.baseElapsedTime = parsed.elapsedTime || 0;
+      }
+      
+      return parsed || {
+        isRunning: false,
+        isPaused: false,
+        elapsedTime: 0, // seconds elapsed (total)
+        baseElapsedTime: 0, // seconds elapsed before current session
+        startTime: null, // timestamp when timer started/resumed
+        activityId: null, // which activity is being timed
+        targetDuration: 0 // target duration in seconds
+      };
+    } catch {
+      return {
+        isRunning: false,
+        isPaused: false,
+        elapsedTime: 0,
+        baseElapsedTime: 0,
+        startTime: null,
+        activityId: null,
+        targetDuration: 0
+      };
+    }
+  });
+
+  // Focus mode state
+  const [focusMode, setFocusMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem('planner.focusMode');
+      return saved ? JSON.parse(saved) : {
+        isEnabled: false,
+        focusedActivityId: null
+      };
+    } catch {
+      return {
+        isEnabled: false,
+        focusedActivityId: null
+      };
+    }
+  });
+
   // Drag and drop state
   const [dragState, setDragState] = useState({
     isDragging: false,
@@ -175,11 +224,77 @@ function DayPlannerApp() {
     } catch {}
   }, [sleepConfig]);
 
+  // Persist timer state
+  useEffect(() => {
+    try {
+      localStorage.setItem("planner.timerState", JSON.stringify(timerState));
+    } catch {}
+  }, [timerState]);
+
+  // Persist focus mode
+  useEffect(() => {
+    try {
+      localStorage.setItem("planner.focusMode", JSON.stringify(focusMode));
+    } catch {}
+  }, [focusMode]);
+
   // Realtime clock
   useEffect(() => {
     nowTick.current = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(nowTick.current);
   }, []);
+
+  // Timer update effect - recalculates elapsed time when running
+  useEffect(() => {
+    if (timerState.isRunning && !timerState.isPaused && timerState.startTime) {
+      // Calculate elapsed time from when timer was started/resumed, plus any previous elapsed time
+      const sessionElapsed = Math.floor((Date.now() - timerState.startTime) / 1000);
+      const totalElapsed = (timerState.baseElapsedTime || 0) + sessionElapsed;
+      
+      // Update timer state with current elapsed time only if it changed
+      if (totalElapsed !== timerState.elapsedTime) {
+        setTimerState(prev => ({
+          ...prev,
+          elapsedTime: totalElapsed
+        }));
+      }
+      
+      // Auto-complete timer if target duration is reached
+      if (timerState.targetDuration > 0 && totalElapsed >= timerState.targetDuration) {
+        // Timer completed
+        setTimerState(prev => ({
+          ...prev,
+          isRunning: false,
+          isPaused: false,
+          elapsedTime: prev.targetDuration,
+          baseElapsedTime: prev.targetDuration
+        }));
+        
+        // Show completion notification
+        if ('Notification' in window && Notification.permission === 'granted') {
+          const timedActivity = activities.find(a => a.id === timerState.activityId);
+          new Notification('Timer Completed!', {
+            body: `Finished: ${timedActivity?.title || 'Activity'}`,
+            icon: '/favicon.ico'
+          });
+        }
+      }
+    }
+  }, [now, timerState.isRunning, timerState.isPaused, timerState.startTime, timerState.targetDuration, timerState.activityId, activities]);
+
+  // Keyboard shortcuts for focus mode
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && focusMode.isEnabled) {
+        toggleFocusMode();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [focusMode.isEnabled]);
+
+
 
   // Derived values
   const dayStart = useMemo(() => {
@@ -322,6 +437,71 @@ function DayPlannerApp() {
 
   // ---------- Handlers ----------
   const resetForm = () => setForm({ id: null, title: "", category: "Work", start: "09:00", duration: 60 });
+
+  // Timer handlers
+  const startTimer = (activityId = null, customDurationMinutes = null) => {
+    const activity = activityId ? activities.find(a => a.id === activityId) : null;
+    const targetDurationSeconds = customDurationMinutes ? customDurationMinutes * 60 : (activity?.duration * 60 || 0);
+    
+    setTimerState(prev => {
+      const isNewActivity = prev.activityId !== activityId;
+      const baseTime = isNewActivity ? 0 : prev.elapsedTime;
+      
+      return {
+        ...prev,
+        isRunning: true,
+        isPaused: false,
+        startTime: Date.now(),
+        activityId: activityId,
+        targetDuration: targetDurationSeconds,
+        elapsedTime: baseTime,
+        baseElapsedTime: baseTime
+      };
+    });
+
+    // Request notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  };
+
+  const pauseTimer = () => {
+    setTimerState(prev => ({
+      ...prev,
+      isPaused: true,
+      isRunning: false,
+      baseElapsedTime: prev.elapsedTime // Save current elapsed time as base
+    }));
+  };
+
+  const resumeTimer = () => {
+    setTimerState(prev => ({
+      ...prev,
+      isRunning: true,
+      isPaused: false,
+      startTime: Date.now(), // Reset start time for new session
+      baseElapsedTime: prev.elapsedTime // Keep the current elapsed time as base
+    }));
+  };
+
+  const stopTimer = () => {
+    setTimerState({
+      isRunning: false,
+      isPaused: false,
+      elapsedTime: 0,
+      baseElapsedTime: 0,
+      startTime: null,
+      activityId: null,
+      targetDuration: 0
+    });
+  };
+
+  const toggleFocusMode = (activityId = null) => {
+    setFocusMode(prev => ({
+      isEnabled: !prev.isEnabled,
+      focusedActivityId: prev.isEnabled ? null : activityId
+    }));
+  };
 
   const onSubmit = (e) => {
     e.preventDefault();
@@ -566,6 +746,17 @@ function DayPlannerApp() {
 
           </div>
 
+          {/* Timer */}
+          <Timer
+            timerState={timerState}
+            onStart={startTimer}
+            onPause={pauseTimer}
+            onResume={resumeTimer}
+            onStop={stopTimer}
+            onToggleFocus={toggleFocusMode}
+            currentActivity={timerState.activityId ? activities.find(a => a.id === timerState.activityId) : null}
+          />
+
           {/* Add/Edit Form */}
           <Form
             form={form}
@@ -603,6 +794,29 @@ function DayPlannerApp() {
                     </div>
                   </div>
                   <div className="flex gap-2">
+                    <IconButton 
+                      label={
+                        timerState.activityId === a.id && timerState.isRunning 
+                          ? "Pause timer" 
+                          : timerState.activityId === a.id && timerState.isPaused
+                          ? "Resume timer"
+                          : "Start timer"
+                      }
+                      onClick={() => {
+                        if (timerState.activityId === a.id && timerState.isRunning) {
+                          pauseTimer();
+                        } else if (timerState.activityId === a.id && timerState.isPaused) {
+                          resumeTimer();
+                        } else {
+                          startTimer(a.id);
+                        }
+                      }}
+                    >
+                      {timerState.activityId === a.id && timerState.isRunning ? '⏸️' : '▶️'}
+                    </IconButton>
+                    <IconButton label="Focus Mode" onClick={() => toggleFocusMode(a.id)}>
+                      🎯
+                    </IconButton>
                     <IconButton label="Edit" onClick={() => onEdit(a)}>
                       ✏️
                     </IconButton>
@@ -690,18 +904,73 @@ function DayPlannerApp() {
                         <div className="text-xs opacity-80">{to12Hour(a.start)}–{minsTo12Hour(endM)} • {a.category}</div>
                       </div>
                     </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete(a.id);
-                      }}
-                      className="absolute top-1 right-1 w-6 h-6 text-white hover:text-red-300 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                      aria-label="Delete activity"
-                    >
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                    </button>
+                    <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {/* Timer control button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (timerState.activityId === a.id && timerState.isRunning) {
+                            pauseTimer();
+                          } else if (timerState.activityId === a.id && timerState.isPaused) {
+                            resumeTimer();
+                          } else {
+                            startTimer(a.id);
+                          }
+                        }}
+                        className={`w-6 h-6 text-white flex items-center justify-center rounded transition-colors ${
+                          timerState.activityId === a.id && timerState.isRunning 
+                            ? 'bg-yellow-500 hover:bg-yellow-600' 
+                            : timerState.activityId === a.id && timerState.isPaused
+                            ? 'bg-green-500 hover:bg-green-600'
+                            : 'hover:bg-blue-500'
+                        }`}
+                        aria-label={
+                          timerState.activityId === a.id && timerState.isRunning 
+                            ? "Pause timer" 
+                            : timerState.activityId === a.id && timerState.isPaused
+                            ? "Resume timer"
+                            : "Start timer"
+                        }
+                      >
+                        {timerState.activityId === a.id && timerState.isRunning ? (
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                        ) : (
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                      </button>
+                      
+                      {/* Focus mode button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFocusMode(a.id);
+                        }}
+                        className="w-6 h-6 text-white hover:bg-purple-500 flex items-center justify-center rounded transition-colors"
+                        aria-label="Enter focus mode for this activity"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+
+                      {/* Delete button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDelete(a.id);
+                        }}
+                        className="w-6 h-6 text-white hover:text-red-300 flex items-center justify-center"
+                        aria-label="Delete activity"
+                      >
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -733,6 +1002,338 @@ function DayPlannerApp() {
       <footer className="max-w-6xl mx-auto mt-8 text-center text-xs text-slate-500 dark:text-slate-400">
         Tip: click a block in the calendar (or an item in the list) to edit it. Data is saved locally in your browser.
       </footer>
+
+      {/* Focus Mode Overlay */}
+      <FocusMode
+        focusMode={focusMode}
+        timerState={timerState}
+        onExitFocus={() => toggleFocusMode()}
+        currentActivity={focusMode.focusedActivityId ? activities.find(a => a.id === focusMode.focusedActivityId) : null}
+        onStartTimer={startTimer}
+        onPauseTimer={pauseTimer}
+        onResumeTimer={resumeTimer}
+        onStopTimer={stopTimer}
+      />
+    </div>
+  );
+}
+
+// ---------- Timer Component ----------
+function Timer({ timerState, onStart, onPause, onResume, onStop, currentActivity, onToggleFocus }) {
+  // Format seconds into MM:SS or HH:MM:SS
+  const formatTime = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours}:${pad(minutes)}:${pad(secs)}`;
+    }
+    return `${minutes}:${pad(secs)}`;
+  };
+
+  const progress = timerState.targetDuration > 0 ? (timerState.elapsedTime / timerState.targetDuration) * 100 : 0;
+  const remainingTime = Math.max(0, timerState.targetDuration - timerState.elapsedTime);
+
+  return (
+    <Card className="border-l-4 border-l-blue-500">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">Focus Timer</h3>
+          <div className="flex items-center gap-2">
+            {currentActivity && (
+              <div className="text-xs text-slate-600 dark:text-slate-400 truncate max-w-24">
+                {currentActivity.title || currentActivity.category}
+              </div>
+            )}
+            <button
+              onClick={() => onToggleFocus(currentActivity?.id)}
+              className="p-1.5 bg-purple-500 hover:bg-purple-600 text-white rounded-lg transition-colors"
+              title="Enter Focus Mode"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Timer display and controls in one row */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {/* Animated hourglass */}
+            <div className="flex-shrink-0">
+              <div 
+                className={`w-6 h-6 flex items-center justify-center ${timerState.isRunning ? 'animate-pulse' : ''}`}
+              >
+                <svg 
+                  className={`w-5 h-5 text-blue-500 ${timerState.isRunning ? 'animate-spin' : ''}`} 
+                  fill="currentColor" 
+                  viewBox="0 0 24 24"
+                  style={{ 
+                    animationDuration: '3s',
+                    animationTimingFunction: 'ease-in-out',
+                    animationIterationCount: 'infinite'
+                  }}
+                >
+                  {/* Hourglass shape */}
+                  <path d="M6,2H18V6.09L14.91,9.18C14.66,9.43 14.66,9.84 14.91,10.09L18,13.18V18H6V13.18L9.09,10.09C9.34,9.84 9.34,9.43 9.09,9.18L6,6.09V2M7.5,3.5V5.59L10.59,8.68C11.37,9.46 11.37,10.72 10.59,11.5L7.5,14.59V16.5H16.5V14.59L13.41,11.5C12.63,10.72 12.63,9.46 13.41,8.68L16.5,5.59V3.5H7.5Z" />
+                  
+                  {/* Sand animation based on progress */}
+                  {timerState.targetDuration > 0 && (
+                    <>
+                      {/* Top sand (decreasing) */}
+                      <path 
+                        d="M8,4H16V5L12,8L8,5V4Z" 
+                        fill="currentColor" 
+                        opacity={0.3 + (1 - progress / 100) * 0.4}
+                        className={timerState.isRunning ? 'animate-pulse' : ''}
+                      />
+                      
+                      {/* Bottom sand (increasing) */}
+                      <path 
+                        d="M8,16H16V17L12,14L8,17V16Z" 
+                        fill="currentColor" 
+                        opacity={0.3 + (progress / 100) * 0.4}
+                        className={timerState.isRunning ? 'animate-pulse' : ''}
+                      />
+                    </>
+                  )}
+                </svg>
+                
+                {/* Falling sand particles animation */}
+                {timerState.isRunning && (
+                  <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                    <div className="w-0.5 h-0.5 bg-blue-400 rounded-full absolute top-1/2 left-1/2 transform -translate-x-1/2 animate-ping" 
+                         style={{ animationDelay: '0s', animationDuration: '1s' }} />
+                    <div className="w-0.5 h-0.5 bg-blue-300 rounded-full absolute top-1/2 left-1/2 transform -translate-x-1/2 animate-ping" 
+                         style={{ animationDelay: '0.3s', animationDuration: '1s' }} />
+                    <div className="w-0.5 h-0.5 bg-blue-400 rounded-full absolute top-1/2 left-1/2 transform -translate-x-1/2 animate-ping" 
+                         style={{ animationDelay: '0.6s', animationDuration: '1s' }} />
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div>
+              <div className="text-2xl font-mono font-bold text-slate-800 dark:text-slate-200">
+                {formatTime(timerState.elapsedTime)}
+              </div>
+              {timerState.targetDuration > 0 && (
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  {formatTime(remainingTime)} left
+                </div>
+              )}
+            </div>
+          </div>
+          
+          <div className="flex gap-1">
+            {!timerState.isRunning && !timerState.isPaused && (
+              <button
+                onClick={() => onStart()}
+                className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium flex items-center gap-1 text-sm"
+              >
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                </svg>
+                Start
+              </button>
+            )}
+            
+            {timerState.isRunning && (
+              <button
+                onClick={onPause}
+                className="px-3 py-1.5 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium flex items-center gap-1 text-sm"
+              >
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                Pause
+              </button>
+            )}
+            
+            {timerState.isPaused && (
+              <button
+                onClick={onResume}
+                className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium flex items-center gap-1 text-sm"
+              >
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                </svg>
+                Resume
+              </button>
+            )}
+            
+            {(timerState.isRunning || timerState.isPaused || timerState.elapsedTime > 0) && (
+              <button
+                onClick={onStop}
+                className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium flex items-center gap-1 text-sm"
+              >
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" />
+                </svg>
+                Stop
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        {timerState.targetDuration > 0 && (
+          <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5">
+            <div 
+              className="bg-blue-500 h-1.5 rounded-full transition-all duration-1000 ease-out"
+              style={{ width: `${Math.min(100, progress)}%` }}
+            />
+          </div>
+        )}
+
+        {/* Quick timer buttons */}
+        {!timerState.isRunning && !timerState.isPaused && (
+          <div className="flex gap-1 justify-center">
+            <span className="text-xs text-slate-500 dark:text-slate-400 mr-2 self-center">Quick:</span>
+            {[5, 15, 25, 45].map(minutes => (
+              <button
+                key={minutes}
+                onClick={() => onStart(null, minutes)}
+                className="px-2 py-1 text-xs bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 rounded"
+              >
+                {minutes}m
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// ---------- Focus Mode Component ----------
+function FocusMode({ focusMode, timerState, onExitFocus, currentActivity, onStartTimer, onPauseTimer, onResumeTimer, onStopTimer }) {
+  if (!focusMode.isEnabled) return null;
+
+  // Format seconds into MM:SS or HH:MM:SS
+  const formatTime = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours}:${pad(minutes)}:${pad(secs)}`;
+    }
+    return `${minutes}:${pad(secs)}`;
+  };
+
+  const progress = timerState.targetDuration > 0 ? (timerState.elapsedTime / timerState.targetDuration) * 100 : 0;
+  const remainingTime = Math.max(0, timerState.targetDuration - timerState.elapsedTime);
+
+  return (
+    <div className="fixed inset-0 bg-slate-900 dark:bg-black z-50 flex items-center justify-center p-4">
+      <div className="max-w-2xl w-full text-center space-y-8">
+        {/* Exit button */}
+        <div className="absolute top-4 right-4">
+          <button
+            onClick={onExitFocus}
+            className="p-3 text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
+            aria-label="Exit focus mode"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Activity info */}
+        {currentActivity && (
+          <div className="space-y-2">
+            <h1 className="text-4xl font-bold text-white">
+              {currentActivity.title || currentActivity.category}
+            </h1>
+            <div className="text-slate-400 text-lg">
+              {currentActivity.category} • {fmtDuration(currentActivity.duration)}
+            </div>
+          </div>
+        )}
+
+        {/* Timer display */}
+        <div className="bg-slate-800 rounded-3xl p-12 border border-slate-700">
+          <div className="text-8xl font-mono font-bold text-white mb-4">
+            {formatTime(timerState.elapsedTime)}
+          </div>
+          
+          {timerState.targetDuration > 0 && (
+            <div className="text-slate-400 text-xl mb-6">
+              Target: {formatTime(timerState.targetDuration)} | Remaining: {formatTime(remainingTime)}
+            </div>
+          )}
+
+          {/* Progress bar */}
+          {timerState.targetDuration > 0 && (
+            <div className="w-full bg-slate-700 rounded-full h-3 mb-8">
+              <div 
+                className="bg-blue-500 h-3 rounded-full transition-all duration-1000 ease-out"
+                style={{ width: `${Math.min(100, progress)}%` }}
+              />
+            </div>
+          )}
+
+          {/* Timer controls */}
+          <div className="flex gap-4 justify-center">
+            {!timerState.isRunning && !timerState.isPaused && (
+              <button
+                onClick={() => onStartTimer(currentActivity?.id)}
+                className="px-8 py-4 bg-green-500 hover:bg-green-600 text-white rounded-2xl font-bold text-xl flex items-center gap-3"
+              >
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                </svg>
+                Start Focus
+              </button>
+            )}
+            
+            {timerState.isRunning && (
+              <button
+                onClick={onPauseTimer}
+                className="px-8 py-4 bg-yellow-500 hover:bg-yellow-600 text-white rounded-2xl font-bold text-xl flex items-center gap-3"
+              >
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                Pause
+              </button>
+            )}
+            
+            {timerState.isPaused && (
+              <button
+                onClick={onResumeTimer}
+                className="px-8 py-4 bg-green-500 hover:bg-green-600 text-white rounded-2xl font-bold text-xl flex items-center gap-3"
+              >
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                </svg>
+                Resume
+              </button>
+            )}
+            
+            {(timerState.isRunning || timerState.isPaused || timerState.elapsedTime > 0) && (
+              <button
+                onClick={onStopTimer}
+                className="px-8 py-4 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold text-xl flex items-center gap-3"
+              >
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" />
+                </svg>
+                Stop
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Focus tips */}
+        <div className="text-slate-400 text-sm max-w-md mx-auto">
+          <p>Focus mode eliminates distractions. Press Esc to exit or click the ✕ button.</p>
+        </div>
+      </div>
     </div>
   );
 }
