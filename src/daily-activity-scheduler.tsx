@@ -1336,7 +1336,9 @@ function DayProgressBar({ nowMin, sleepConfig, nextSleep, freeUntilSleep, sorted
   
   return (
     <div className="space-y-3">
-      <div className="text-sm text-slate-500 dark:text-slate-400 text-center">Day Progress</div>
+      <div className="text-sm text-slate-500 dark:text-slate-400 text-center">
+        Day Progress <span className="text-xs">({minsTo12Hour(sleepEnd)} - {minsTo12Hour(sleepStart)})</span>
+      </div>
       
       {/* Progress bar with percentage indicator */}
       <div className="flex items-center gap-3">
