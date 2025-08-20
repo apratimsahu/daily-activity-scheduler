@@ -832,8 +832,9 @@ function DayPlannerApp() {
 
         {/* Right: Calendar */}
         <section className="lg:col-span-3">
-          <h2 className="font-semibold mb-2">Daily Calendar</h2>
-          <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-4">
+          <Card>
+            <h2 className="font-semibold mb-4">Daily Calendar</h2>
+            <div className="relative">
             {/* Timeline */}
             <div 
               className="relative calendar-timeline cursor-pointer" 
@@ -994,8 +995,8 @@ function DayPlannerApp() {
                 </div>
               )}
             </div>
-          </div>
-
+            </div>
+          </Card>
         </section>
       </div>
 
