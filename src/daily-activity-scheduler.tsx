@@ -1032,7 +1032,7 @@ function DayPlannerApp() {
                 );
               })}
 
-              {/* Focus session bars */}
+              {/* Completed focus session bars */}
               {(() => {
                 // Filter today's focus sessions
                 const today = new Date();
@@ -1050,11 +1050,13 @@ function DayPlannerApp() {
                   
                   // Calculate display position and height
                   const startPos = timeToDisplayPosition(startMinutes);
-                  const duration = endMinutes - startMinutes;
-                  const height = Math.max(8, (duration / AWAKE_MINUTES) * CAL_HEIGHT_PX);
+                  const endPos = timeToDisplayPosition(endMinutes);
                   
                   // Only show if within awake time
-                  if (startPos < 0) return null;
+                  if (startPos < 0 || endPos < 0) return null;
+                  
+                  const height = Math.max(4, endPos - startPos);
+                  const duration = endMinutes - startMinutes;
                   
                   // Find associated activity for context
                   const activity = activities.find(a => a.id === session.activityId);
@@ -1062,36 +1064,49 @@ function DayPlannerApp() {
                   return (
                     <div
                       key={`focus-${index}`}
-                      className="absolute right-1 w-2 rounded-sm bg-gradient-to-b from-blue-400 via-blue-500 to-blue-600 dark:from-blue-500 dark:via-blue-600 dark:to-blue-700 opacity-80 z-30"
+                      className="absolute right-1 w-3 rounded-sm bg-gradient-to-b from-blue-400 via-blue-500 to-blue-600 dark:from-blue-500 dark:via-blue-600 dark:to-blue-700 opacity-90 z-20"
                       style={{
                         top: startPos,
-                        height: height
+                        height: height,
+                        minHeight: '2px'
                       }}
-                      title={`Focus session: ${activity?.title || activity?.category || 'Unknown'} (${fmtDuration(duration)})`}
+                      title={`Completed focus session: ${activity?.title || activity?.category || 'Unknown'} (${fmtDuration(duration)})`}
                     />
                   );
                 });
               })()}
 
-              {/* Current focus session bar (if timer is running in focus mode) */}
-              {focusMode.isEnabled && timerState.isRunning && timerState.startTime && (() => {
+              {/* Current focus session bar (when timer is running) */}
+              {timerState.isRunning && timerState.startTime && (() => {
                 const sessionStartMinutes = Math.floor((timerState.startTime % (24 * 60 * 60 * 1000)) / (60 * 1000));
-                const startPos = timeToDisplayPosition(sessionStartMinutes);
-                const duration = nowMin - sessionStartMinutes;
-                const height = Math.max(8, (duration / AWAKE_MINUTES) * CAL_HEIGHT_PX);
+                const sessionStartPos = timeToDisplayPosition(sessionStartMinutes);
                 
-                if (startPos < 0 || duration <= 0) return null;
+                // Calculate current position and height from start of session
+                const nowPos = (() => {
+                  const nowPosition = timeToDisplayPosition(nowMin);
+                  return nowPosition >= 0 ? nowPosition : 0;
+                })();
+                
+                // Only show if session started during awake time
+                if (sessionStartPos < 0) return null;
+                
+                // Calculate height from session start to now
+                const height = Math.max(8, nowPos - sessionStartPos);
+                
+                if (height <= 0) return null;
                 
                 const currentActivity = activities.find(a => a.id === timerState.activityId);
+                const elapsedMinutes = Math.floor(timerState.elapsedTime / 60);
                 
                 return (
                   <div
-                    className="absolute right-1 w-2 rounded-sm bg-gradient-to-b from-green-400 via-green-500 to-green-600 dark:from-green-500 dark:via-green-600 dark:to-green-700 opacity-90 z-30 animate-pulse"
+                    className="absolute right-1 w-3 rounded-sm bg-gradient-to-b from-green-400 via-green-500 to-green-600 dark:from-green-500 dark:via-green-600 dark:to-green-700 opacity-95 z-30 animate-pulse"
                     style={{
-                      top: startPos,
-                      height: height
+                      top: sessionStartPos,
+                      height: height,
+                      minHeight: '4px'
                     }}
-                    title={`Current focus session: ${currentActivity?.title || currentActivity?.category || 'Active'} (${fmtDuration(duration)})`}
+                    title={`Active timer: ${currentActivity?.title || currentActivity?.category || 'Timer'} (${fmtDuration(elapsedMinutes)})`}
                   />
                 );
               })()}
