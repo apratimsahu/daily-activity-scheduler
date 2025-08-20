@@ -160,6 +160,11 @@ function DayPlannerApp() {
         parsed.baseElapsedTime = parsed.elapsedTime || 0;
       }
       
+      // If we have saved state but no focusSessions, add it for compatibility
+      if (parsed && !Array.isArray(parsed.focusSessions)) {
+        parsed.focusSessions = [];
+      }
+      
       return parsed || {
         isRunning: false,
         isPaused: false,
@@ -167,7 +172,8 @@ function DayPlannerApp() {
         baseElapsedTime: 0, // seconds elapsed before current session
         startTime: null, // timestamp when timer started/resumed
         activityId: null, // which activity is being timed
-        targetDuration: 0 // target duration in seconds
+        targetDuration: 0, // target duration in seconds
+        focusSessions: [] // array of {startTime, endTime, activityId} for calendar visualization
       };
     } catch {
       return {
@@ -177,7 +183,8 @@ function DayPlannerApp() {
         baseElapsedTime: 0,
         startTime: null,
         activityId: null,
-        targetDuration: 0
+        targetDuration: 0,
+        focusSessions: []
       };
     }
   });
@@ -466,12 +473,27 @@ function DayPlannerApp() {
   };
 
   const pauseTimer = () => {
-    setTimerState(prev => ({
-      ...prev,
-      isPaused: true,
-      isRunning: false,
-      baseElapsedTime: prev.elapsedTime // Save current elapsed time as base
-    }));
+    setTimerState(prev => {
+      const now = Date.now();
+      const updatedSessions = [...prev.focusSessions];
+      
+      // If we're in focus mode and there was a start time, record this focus session
+      if (focusMode.isEnabled && prev.startTime) {
+        updatedSessions.push({
+          startTime: prev.startTime,
+          endTime: now,
+          activityId: prev.activityId
+        });
+      }
+      
+      return {
+        ...prev,
+        isPaused: true,
+        isRunning: false,
+        baseElapsedTime: prev.elapsedTime, // Save current elapsed time as base
+        focusSessions: updatedSessions
+      };
+    });
   };
 
   const resumeTimer = () => {
@@ -485,18 +507,52 @@ function DayPlannerApp() {
   };
 
   const stopTimer = () => {
-    setTimerState({
-      isRunning: false,
-      isPaused: false,
-      elapsedTime: 0,
-      baseElapsedTime: 0,
-      startTime: null,
-      activityId: null,
-      targetDuration: 0
+    setTimerState(prev => {
+      const now = Date.now();
+      const updatedSessions = [...prev.focusSessions];
+      
+      // If we're in focus mode and there was a start time, record this focus session
+      if (focusMode.isEnabled && prev.startTime) {
+        updatedSessions.push({
+          startTime: prev.startTime,
+          endTime: now,
+          activityId: prev.activityId
+        });
+      }
+      
+      return {
+        isRunning: false,
+        isPaused: false,
+        elapsedTime: 0,
+        baseElapsedTime: 0,
+        startTime: null,
+        activityId: null,
+        targetDuration: 0,
+        focusSessions: updatedSessions
+      };
     });
   };
 
   const toggleFocusMode = (activityId = null) => {
+    // If exiting focus mode while timer is running, record the session
+    if (focusMode.isEnabled && timerState.isRunning && timerState.startTime) {
+      setTimerState(prevTimer => {
+        const now = Date.now();
+        const updatedSessions = [...prevTimer.focusSessions];
+        
+        updatedSessions.push({
+          startTime: prevTimer.startTime,
+          endTime: now,
+          activityId: prevTimer.activityId
+        });
+        
+        return {
+          ...prevTimer,
+          focusSessions: updatedSessions
+        };
+      });
+    }
+    
     setFocusMode(prev => ({
       isEnabled: !prev.isEnabled,
       focusedActivityId: prev.isEnabled ? null : activityId
@@ -975,6 +1031,70 @@ function DayPlannerApp() {
                   </div>
                 );
               })}
+
+              {/* Focus session bars */}
+              {(() => {
+                // Filter today's focus sessions
+                const today = new Date();
+                const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+                const todayEnd = todayStart + (24 * 60 * 60 * 1000);
+                
+                const todayFocusSessions = timerState.focusSessions.filter(session => 
+                  session.startTime >= todayStart && session.startTime < todayEnd
+                );
+                
+                return todayFocusSessions.map((session, index) => {
+                  // Convert timestamps to minutes from midnight
+                  const startMinutes = Math.floor((session.startTime % (24 * 60 * 60 * 1000)) / (60 * 1000));
+                  const endMinutes = Math.floor((session.endTime % (24 * 60 * 60 * 1000)) / (60 * 1000));
+                  
+                  // Calculate display position and height
+                  const startPos = timeToDisplayPosition(startMinutes);
+                  const duration = endMinutes - startMinutes;
+                  const height = Math.max(8, (duration / AWAKE_MINUTES) * CAL_HEIGHT_PX);
+                  
+                  // Only show if within awake time
+                  if (startPos < 0) return null;
+                  
+                  // Find associated activity for context
+                  const activity = activities.find(a => a.id === session.activityId);
+                  
+                  return (
+                    <div
+                      key={`focus-${index}`}
+                      className="absolute right-1 w-2 rounded-sm bg-gradient-to-b from-blue-400 via-blue-500 to-blue-600 dark:from-blue-500 dark:via-blue-600 dark:to-blue-700 opacity-80 z-30"
+                      style={{
+                        top: startPos,
+                        height: height
+                      }}
+                      title={`Focus session: ${activity?.title || activity?.category || 'Unknown'} (${fmtDuration(duration)})`}
+                    />
+                  );
+                });
+              })()}
+
+              {/* Current focus session bar (if timer is running in focus mode) */}
+              {focusMode.isEnabled && timerState.isRunning && timerState.startTime && (() => {
+                const sessionStartMinutes = Math.floor((timerState.startTime % (24 * 60 * 60 * 1000)) / (60 * 1000));
+                const startPos = timeToDisplayPosition(sessionStartMinutes);
+                const duration = nowMin - sessionStartMinutes;
+                const height = Math.max(8, (duration / AWAKE_MINUTES) * CAL_HEIGHT_PX);
+                
+                if (startPos < 0 || duration <= 0) return null;
+                
+                const currentActivity = activities.find(a => a.id === timerState.activityId);
+                
+                return (
+                  <div
+                    className="absolute right-1 w-2 rounded-sm bg-gradient-to-b from-green-400 via-green-500 to-green-600 dark:from-green-500 dark:via-green-600 dark:to-green-700 opacity-90 z-30 animate-pulse"
+                    style={{
+                      top: startPos,
+                      height: height
+                    }}
+                    title={`Current focus session: ${currentActivity?.title || currentActivity?.category || 'Active'} (${fmtDuration(duration)})`}
+                  />
+                );
+              })()}
 
               {/* Shadow preview during drag */}
               {dragState.isDragging && dragState.shadowPosition && dragState.draggedActivity && (
