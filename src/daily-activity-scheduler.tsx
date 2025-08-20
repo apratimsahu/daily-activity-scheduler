@@ -752,7 +752,7 @@ function DayPlannerApp() {
   // ---------- UI ----------
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-4 sm:p-6">
-      <div className="max-w-6xl mx-auto grid gap-6 lg:grid-cols-5">
+      <div className="max-w-7xl mx-auto grid gap-6 lg:grid-cols-6">
         {/* Left: Controls & Stats */}
         <section className="lg:col-span-2 space-y-6">
           <header className="flex items-center justify-between">
@@ -886,7 +886,7 @@ function DayPlannerApp() {
           </div>
         </section>
 
-        {/* Right: Calendar */}
+        {/* Center: Calendar */}
         <section className="lg:col-span-3">
           <Card>
             <h2 className="font-semibold mb-4">Daily Calendar</h2>
@@ -1132,6 +1132,16 @@ function DayPlannerApp() {
             </div>
             </div>
           </Card>
+        </section>
+
+        {/* Right: Focus Calendar */}
+        <section className="lg:col-span-1">
+          <FocusCalendar 
+            timerState={timerState}
+            activities={activities}
+            nowMin={nowMin}
+            sleepConfig={sleepConfig}
+          />
         </section>
       </div>
 
@@ -1471,6 +1481,196 @@ function FocusMode({ focusMode, timerState, onExitFocus, currentActivity, onStar
         </div>
       </div>
     </div>
+  );
+}
+
+// ---------- Focus Calendar Component ----------
+function FocusCalendar({ timerState, activities, nowMin, sleepConfig }) {
+  // Get today's focus sessions
+  const todayFocusSessions = timerState.focusSessions.filter(session => {
+    const sessionDate = new Date(session.startTime);
+    const today = new Date();
+    return sessionDate.toDateString() === today.toDateString();
+  });
+
+  // Sleep-aware positioning (same as main calendar)
+  const DAY_MINUTES = 24 * 60;
+  const AWAKE_MINUTES = DAY_MINUTES - sleepConfig.duration;
+  const CAL_HEIGHT_PX = 600; // Fixed height for focus calendar
+  
+  const sleepStart = toMinutes(sleepConfig.start);
+  const sleepEnd = (sleepStart + sleepConfig.duration) % DAY_MINUTES;
+
+  // Convert absolute time to display position (calendar starts from sleep end time)
+  const timeToDisplayPosition = (timeMinutes) => {
+    const normalizedTime = ((timeMinutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+    let minutesFromWakeUp = 0;
+    
+    if (sleepStart < sleepEnd) {
+      if (normalizedTime >= sleepStart && normalizedTime < sleepEnd) {
+        return -1; // During sleep - not shown
+      } else if (normalizedTime >= sleepEnd) {
+        minutesFromWakeUp = normalizedTime - sleepEnd;
+      } else {
+        minutesFromWakeUp = (normalizedTime + (24 * 60) - sleepEnd);
+      }
+    } else {
+      if (normalizedTime >= sleepStart || normalizedTime < sleepEnd) {
+        return -1; // During sleep - not shown
+      } else {
+        minutesFromWakeUp = normalizedTime - sleepEnd;
+      }
+    }
+    
+    return (minutesFromWakeUp / AWAKE_MINUTES) * CAL_HEIGHT_PX;
+  };
+
+  // Generate hour markers (same logic as main calendar)
+  const hourMarks = [];
+  
+  // Calculate how many full hours we have in the awake period
+  const awakeHours = Math.floor(AWAKE_MINUTES / 60);
+  
+  // Add hour marks for each full hour from wake up
+  for (let i = 0; i <= awakeHours; i++) {
+    const minutesFromWakeUp = i * 60;
+    const actualTimeMinutes = (sleepEnd + minutesFromWakeUp) % (24 * 60);
+    const hour = Math.floor(actualTimeMinutes / 60);
+    const displayPosition = (minutesFromWakeUp / AWAKE_MINUTES) * CAL_HEIGHT_PX;
+    
+    hourMarks.push({
+      minutes: actualTimeMinutes,
+      displayPosition: displayPosition,
+      hour: hour
+    });
+  }
+  
+  // Always add the sleep start time as the final mark at the bottom
+  const sleepStartHour = Math.floor(sleepStart / 60);
+  const lastMark = hourMarks[hourMarks.length - 1];
+  
+  // Only add if it's different from the last hour mark
+  if (!lastMark || lastMark.hour !== sleepStartHour) {
+    hourMarks.push({
+      minutes: sleepStart,
+      displayPosition: CAL_HEIGHT_PX - 1, // Position just before the very bottom
+      hour: sleepStartHour
+    });
+  }
+
+  return (
+    <Card>
+      <h3 className="font-semibold mb-4 text-sm">Focus Sessions</h3>
+      <div className="relative h-[600px] overflow-hidden pt-3">
+        {/* Hour markers - same as main calendar */}
+        {hourMarks.map((mark, idx) => (
+          <div 
+            key={idx} 
+            className="absolute left-0 right-0 border-t border-slate-100 dark:border-slate-700 flex items-start" 
+            style={{ top: `${mark.displayPosition}px` }}
+          >
+            <div className="-mt-3 text-[10px] text-slate-400 dark:text-slate-500 select-none w-12">
+              {formatHourMarker(mark.hour)}
+            </div>
+          </div>
+        ))}
+
+        {/* Current time indicator - only if awake */}
+        {(() => {
+          const nowPosition = timeToDisplayPosition(nowMin);
+          if (nowPosition >= 0) {
+            return (
+              <div
+                className="absolute left-8 right-0 h-0.5 bg-red-500 z-10"
+                style={{ top: `${nowPosition}px` }}
+              >
+                <div className="absolute -left-2 -top-1 w-2 h-2 bg-red-500 rounded-full"></div>
+              </div>
+            );
+          }
+          return null;
+        })()}
+
+        {/* Completed focus sessions */}
+        {todayFocusSessions.map((session, index) => {
+          const startMin = Math.floor((session.startTime % (24 * 60 * 60 * 1000)) / (60 * 1000));
+          const endMin = Math.floor((session.endTime % (24 * 60 * 60 * 1000)) / (60 * 1000));
+          
+          const startPos = timeToDisplayPosition(startMin);
+          const endPos = timeToDisplayPosition(endMin);
+          
+          // Only show if within awake time
+          if (startPos < 0 || endPos < 0) return null;
+          
+          const height = Math.max(4, endPos - startPos);
+          const duration = endMin - startMin;
+          const activity = activities.find(a => a.id === session.activityId);
+          
+          return (
+            <div
+              key={`focus-${index}`}
+              className="absolute left-8 right-1 bg-blue-500 dark:bg-blue-400 rounded-sm opacity-80 z-20"
+              style={{
+                top: `${startPos}px`,
+                height: `${height}px`
+              }}
+              title={`Focus: ${activity?.title || activity?.category || 'Unknown'} (${Math.floor(duration)}min)`}
+            >
+              {duration >= 15 && (
+                <div className="text-white text-xs p-1 leading-none">
+                  <div className="truncate font-medium">
+                    {activity?.title || activity?.category || 'Focus'}
+                  </div>
+                  <div className="text-white/80">
+                    {to12Hour(Math.floor(startMin / 60) + ':' + String(startMin % 60).padStart(2, '0'))} - {to12Hour(Math.floor(endMin / 60) + ':' + String(endMin % 60).padStart(2, '0'))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        }).filter(Boolean)}
+
+        {/* Current active focus session */}
+        {timerState.isRunning && timerState.startTime && (
+          (() => {
+            const sessionStartMin = Math.floor((timerState.startTime % (24 * 60 * 60 * 1000)) / (60 * 1000));
+            const sessionStartPos = timeToDisplayPosition(sessionStartMin);
+            
+            // Only show if session started during awake time
+            if (sessionStartPos < 0) return null;
+            
+            const nowPos = timeToDisplayPosition(nowMin);
+            const currentPos = nowPos >= 0 ? nowPos : sessionStartPos;
+            
+            const height = Math.max(4, currentPos - sessionStartPos);
+            const elapsedMinutes = Math.floor(timerState.elapsedTime / 60);
+            const currentActivity = activities.find(a => a.id === timerState.activityId);
+            
+            return (
+              <div
+                className="absolute left-8 right-1 bg-green-500 dark:bg-green-400 rounded-sm opacity-90 z-30 animate-pulse"
+                style={{
+                  top: `${sessionStartPos}px`,
+                  height: `${height}px`
+                }}
+                title={`Active: ${currentActivity?.title || currentActivity?.category || 'Timer'} (${elapsedMinutes}min)`}
+              >
+                {elapsedMinutes >= 15 && (
+                  <div className="text-white text-xs p-1 leading-none">
+                    <div className="truncate font-medium">
+                      {currentActivity?.title || currentActivity?.category || 'Active'}
+                    </div>
+                    <div className="text-white/80">
+                      {to12Hour(Math.floor(sessionStartMin / 60) + ':' + String(sessionStartMin % 60).padStart(2, '0'))} - Now
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()
+        )}
+      </div>
+    </Card>
   );
 }
 
