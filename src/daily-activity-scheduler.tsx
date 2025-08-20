@@ -909,22 +909,6 @@ function DayPlannerApp() {
                 </div>
               ))}
 
-              {/* Now indicator - only show if not during sleep */}
-              {(() => {
-                const nowPosition = timeToDisplayPosition(nowMin);
-                if (nowPosition >= 0) {
-                  return (
-                    <>
-                      <div
-                        className="absolute left-0 right-0 h-0.5 bg-emerald-500/80"
-                        style={{ top: nowPosition }}
-                      />
-                      <div className="absolute -top-2 text-[10px] text-emerald-700 dark:text-emerald-400" style={{ top: nowPosition - 10 }}>now</div>
-                    </>
-                  );
-                }
-                return null;
-              })()}
 
               {/* Activity blocks */}
               {sorted
@@ -981,7 +965,7 @@ function DayPlannerApp() {
                           timerState.activityId === a.id && timerState.isRunning 
                             ? 'bg-yellow-500 hover:bg-yellow-600' 
                             : timerState.activityId === a.id && timerState.isPaused
-                            ? 'bg-green-500 hover:bg-green-600'
+                            ? 'bg-gradient-to-b from-emerald-400 to-emerald-600 hover:from-emerald-500 hover:to-emerald-700'
                             : 'hover:bg-blue-500'
                         }`}
                         aria-label={
@@ -1148,6 +1132,23 @@ function DayPlannerApp() {
                   );
                 })()}
               </div>
+
+              {/* Now indicator - spans across both calendar and focus sections */}
+              {(() => {
+                const nowPosition = timeToDisplayPosition(nowMin);
+                if (nowPosition >= 0) {
+                  return (
+                    <>
+                      <div
+                        className="absolute left-0 right-0 h-0.5 bg-emerald-500/80 z-40"
+                        style={{ top: nowPosition }}
+                      />
+                      <div className="absolute left-0 text-[10px] text-emerald-700 dark:text-emerald-400 z-40" style={{ top: nowPosition - 10 }}>now</div>
+                    </>
+                  );
+                }
+                return null;
+              })()}
             </div>
             </div>
           </Card>
@@ -1287,7 +1288,7 @@ function Timer({ timerState, onStart, onPause, onResume, onStop, currentActivity
             {!timerState.isRunning && !timerState.isPaused && (
               <button
                 onClick={() => onStart()}
-                className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium flex items-center gap-1 text-sm"
+                className="px-3 py-1.5 bg-gradient-to-b from-emerald-400 via-emerald-500 to-emerald-600 hover:from-emerald-500 hover:via-emerald-600 hover:to-emerald-700 text-white rounded-lg font-medium flex items-center gap-1 text-sm shadow-md hover:shadow-lg transition-all duration-200"
               >
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
@@ -1311,7 +1312,7 @@ function Timer({ timerState, onStart, onPause, onResume, onStop, currentActivity
             {timerState.isPaused && (
               <button
                 onClick={onResume}
-                className="px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium flex items-center gap-1 text-sm"
+                className="px-3 py-1.5 bg-gradient-to-b from-emerald-400 via-emerald-500 to-emerald-600 hover:from-emerald-500 hover:via-emerald-600 hover:to-emerald-700 text-white rounded-lg font-medium flex items-center gap-1 text-sm shadow-md hover:shadow-lg transition-all duration-200"
               >
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
@@ -1438,7 +1439,7 @@ function FocusMode({ focusMode, timerState, onExitFocus, currentActivity, onStar
             {!timerState.isRunning && !timerState.isPaused && (
               <button
                 onClick={() => onStartTimer(currentActivity?.id)}
-                className="px-8 py-4 bg-green-500 hover:bg-green-600 text-white rounded-2xl font-bold text-xl flex items-center gap-3"
+                className="px-8 py-4 bg-gradient-to-b from-emerald-400 via-emerald-500 to-emerald-600 hover:from-emerald-500 hover:via-emerald-600 hover:to-emerald-700 text-white rounded-2xl font-bold text-xl flex items-center gap-3 shadow-lg hover:shadow-xl transition-all duration-200"
               >
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
@@ -1462,7 +1463,7 @@ function FocusMode({ focusMode, timerState, onExitFocus, currentActivity, onStar
             {timerState.isPaused && (
               <button
                 onClick={onResumeTimer}
-                className="px-8 py-4 bg-green-500 hover:bg-green-600 text-white rounded-2xl font-bold text-xl flex items-center gap-3"
+                className="px-8 py-4 bg-gradient-to-b from-emerald-400 via-emerald-500 to-emerald-600 hover:from-emerald-500 hover:via-emerald-600 hover:to-emerald-700 text-white rounded-2xl font-bold text-xl flex items-center gap-3 shadow-lg hover:shadow-xl transition-all duration-200"
               >
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
