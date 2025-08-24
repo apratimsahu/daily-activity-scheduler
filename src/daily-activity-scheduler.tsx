@@ -78,9 +78,9 @@ const ThemeProvider = ({ children }) => {
     try {
       // Clear old theme preference and set new default
       localStorage.removeItem('planner.theme');
-      return false; // Default to light mode
+      return true; // Default to dark mode
     } catch {
-      return false;
+      return true;
     }
   });
 
@@ -759,7 +759,7 @@ function DayPlannerApp() {
         {/* Left: Controls & Stats */}
         <section className="lg:col-span-2 space-y-6">
           <header className="flex items-center justify-between">
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Daily Activity Planner</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Apratim Sahu</h1>
             <div className="flex items-center gap-3">
               <ThemeToggle />
               <button
