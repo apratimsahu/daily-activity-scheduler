@@ -65,7 +65,7 @@ const fmtDuration = (mins) => {
 };
 
 // ---------- Theme Context ----------
-const ThemeContext = createContext();
+const ThemeContext = createContext({});
 
 const useTheme = () => {
   const context = useContext(ThemeContext);
@@ -627,7 +627,9 @@ function DayPlannerApp() {
         top: originalTop,
         startTime: originalStartTime
       },
-      currentMouseY: e.clientY
+      currentMouseY: e.clientY,
+      justFinishedDrag: false,
+      hasMoved: false
     });
   };
 
@@ -2202,7 +2204,7 @@ function DayProgressBar({ nowMin, sleepConfig, nextSleep, freeUntilSleep, sorted
 }
 
 function ThemeToggle() {
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, toggleTheme } = useTheme() as any;
   
   return (
     <button
