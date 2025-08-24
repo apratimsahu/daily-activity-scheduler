@@ -77,9 +77,9 @@ const ThemeProvider = ({ children }) => {
   const [isDark, setIsDark] = useState(() => {
     try {
       const saved = localStorage.getItem('planner.theme');
-      return saved ? JSON.parse(saved) : true; // Default to dark mode
+      return saved ? JSON.parse(saved) : false; // Default to light mode
     } catch {
-      return true;
+      return false;
     }
   });
 
